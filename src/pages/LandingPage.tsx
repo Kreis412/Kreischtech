@@ -23,7 +23,7 @@ function LandingPage() {
       <section className="hero" style={{ paddingTop: '12rem', textAlign: 'center' }}>
         <div className="container">
           <div className="glass" style={{ display: 'inline-block', padding: '0.5rem 1.5rem', marginBottom: '2rem', fontSize: '0.9rem', color: 'var(--accent-blue)' }}>
-            Construction-First AI Consulting
+            Kreischtech AI Consulting
           </div>
           <h1 style={{ marginBottom: '2rem' }}>Secure, Local AI Built for the <br /><span className="gradient-text">Jobsite and the Boardroom.</span></h1>
           <p style={{ fontSize: '1.25rem', color: 'var(--text-muted)', maxWidth: '800px', margin: '0 auto 4rem' }}>
@@ -183,7 +183,7 @@ function LandingPage() {
             </div>
           </div>
           <div style={{ marginTop: '6rem', color: 'var(--text-muted)', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--glass-border)', paddingTop: '2rem' }}>
-            <div>© 2026 KaiAI Consultation Inc. All rights reserved.</div>
+            <div>© 2026 Kreischtech AI Consulting. All rights reserved.</div>
             <div style={{ display: 'flex', gap: '2rem' }}>
               <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
               <span style={{ cursor: 'pointer' }}>Terms of Service</span>

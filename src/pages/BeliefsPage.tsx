@@ -44,7 +44,7 @@ function BeliefsPage() {
         <div style={{ textAlign: 'center', maxWidth: '800px', margin: '0 auto 6rem' }}>
           <h1 style={{ marginBottom: '1.5rem' }}>Our <span className="gradient-text">Core Beliefs</span></h1>
           <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>
-            KaiAI was founded on the principle that the construction industry deserves technology that respects its privacy, values its data, and understands the weight of a physical build.
+            Kreischtech AI Consulting was founded on the principle that the construction industry deserves technology that respects its privacy, values its data, and understands the weight of a physical build.
           </p>
         </div>
 

@@ -80,8 +80,8 @@ function PricingPage() {
         {/* ROI Logic */}
         <section className="glass" style={{ padding: '4rem', marginBottom: '8rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <h2>The Kai<span className="gradient-text">AI</span> ROI Model</h2>
-            <p style={{ color: 'var(--text-muted)' }}>Why our clients view KaiAI as an asset, not an expense.</p>
+            <h2>The Kreischtech <span className="gradient-text">AI</span> ROI Model</h2>
+            <p style={{ color: 'var(--text-muted)' }}>Why our clients view our solutions as an asset, not an expense.</p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '3rem' }}>

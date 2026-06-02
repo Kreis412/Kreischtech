@@ -12,7 +12,7 @@ function App() {
         {/* Global Navigation */}
         <nav className="glass" style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '1200px', zIndex: 1000, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 800, fontSize: '1.5rem', letterSpacing: '-1px' }}>
-            Kai<span className="gradient-text">AI</span>
+            Kreischtech <span className="gradient-text">AI</span>
           </Link>
           <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
             <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Services</Link>

@@ -24,7 +24,7 @@ function SecurityPage() {
           <h1 style={{ marginBottom: '1rem' }}>Our <span className="gradient-text">Security-First</span> Philosophy</h1>
           <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>
             In construction, your blueprints, bids, and contract intelligence are your competitive edge. 
-            At KaiAI, we believe AI adoption should never require you to sacrifice that edge to a third-party cloud.
+            At Kreischtech AI, we believe AI adoption should never require you to sacrifice that edge to a third-party cloud.
           </p>
         </div>
 
