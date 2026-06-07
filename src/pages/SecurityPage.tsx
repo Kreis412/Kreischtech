@@ -8,10 +8,16 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 
 function SecurityPage() {
   return (
     <div className="security-page" style={{ paddingTop: '8rem', position: 'relative' }}>
+      <SEO 
+        title="Data Security & Sovereign AI"
+        description="Learn how we protect your proprietary blueprints and bids using on-premise LLM deployments and offline-capable site intelligence."
+        keywords="Data Security AI, On-premise LLM, Private AI, Construction Data Protection"
+      />
       <div className="blob" style={{ top: '20%', left: '-100px', background: 'var(--accent-blue)' }}></div>
       <div className="blob" style={{ bottom: '20%', right: '-100px', background: 'var(--accent-purple)' }}></div>
 

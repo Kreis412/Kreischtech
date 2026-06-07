@@ -10,10 +10,34 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 
 function LandingPage() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "ProfessionalService",
+    "name": "Kreischtech AI Consulting",
+    "image": "https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&q=80&w=1200",
+    "description": "Secure, local AI consulting for Construction and Engineering firms.",
+    "url": "https://kreischtech.vercel.app/",
+    "serviceType": "AI Consulting",
+    "areaServed": "Global",
+    "offers": {
+      "@type": "Offer",
+      "description": "Secure AI implementation for construction operations"
+    }
+  };
+
   return (
     <div className="landing-page" style={{ position: 'relative' }}>
+      <SEO 
+        title="Secure, Local AI for Construction"
+        description="Secure, local AI built for the jobsite and the boardroom. We help Construction & Engineering firms deploy sovereign AI that protects bids, blueprints, and data."
+        keywords="Construction AI, Secure LLM, Sovereign AI, On-premise AI, Construction Tech Consulting"
+      />
+      <script type="application/ld+json">
+        {JSON.stringify(structuredData)}
+      </script>
       {/* Decorative Blobs */}
       <div className="blob" style={{ top: '-100px', left: '-100px' }}></div>
       <div className="blob" style={{ top: '40%', right: '-100px', background: 'var(--accent-purple)' }}></div>

@@ -1,73 +1,50 @@
-# React + TypeScript + Vite
+# Kreischtech AI Consulting
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Secure, Local AI Built for the Jobsite and the Boardroom.
 
-Currently, two official plugins are available:
+## Project Overview
+This website is a Single Page Application (SPA) built with React, TypeScript, and Vite, designed to showcase AI consulting services for the Construction and Engineering industries.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## SEO Implementation
+We have implemented a comprehensive SEO strategy using `react-helmet-async`.
 
-## React Compiler
+### 1. Dynamic Head Management
+Each page has its own unique title, description, and keywords managed via the `SEO` component. This ensures that search engines index the specific content of each page.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 2. Reusable SEO Component
+Located at `src/components/SEO.tsx`, this component handles:
+- Dynamic Title (appends site name)
+- Meta Descriptions
+- Keywords
+- Open Graph (OG) Tags for Social Media
+- Twitter Cards
 
-## Expanding the ESLint configuration
+### 3. Global Meta Tags
+Base meta tags and defaults are set in `index.html` to provide high-quality fallback data.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 4. Structured Data (JSON-LD)
+We use JSON-LD structured data on the Landing Page to provide search engines with explicit information about the business.
+- **Type**: `ProfessionalService`
+- **Focus**: AI Consulting for Construction
+- **Location**: Ashtabula, Ohio
+- **URL**: https://kreischtech.vercel.app/
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 5. Social Media Presence
+Open Graph and Twitter tags are configured with high-quality preview images (Unsplash) to ensure professional visibility when links are shared.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Development
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Setup
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Build
+```bash
+npm run build
+```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Testing
+```bash
+npm run test
 ```

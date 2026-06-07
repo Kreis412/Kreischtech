@@ -8,10 +8,16 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 
 function ContactPage() {
   return (
     <div className="contact-page" style={{ paddingTop: '8rem', position: 'relative' }}>
+      <SEO 
+        title="Book an AI Consultation"
+        description="Ready to secure your future? Schedule a consultation for a security-first AI roadmap tailored to your construction operations."
+        keywords="Contact AI Consulting, AI Strategy Session, Construction AI Roadmap"
+      />
       <div className="blob" style={{ top: '15%', right: '-100px', background: 'var(--accent-blue)' }}></div>
       <div className="blob" style={{ bottom: '15%', left: '-100px', background: 'var(--accent-purple)' }}></div>
 

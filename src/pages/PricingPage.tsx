@@ -7,6 +7,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 
 function PricingPage() {
   const packages = [
@@ -36,6 +37,11 @@ function PricingPage() {
 
   return (
     <div className="pricing-page" style={{ paddingTop: '8rem', position: 'relative' }}>
+      <SEO 
+        title="AI Consulting Packages & Pricing"
+        description="Explore our value-based implementation tiers, from rapid pilot programs to full enterprise AI transformation."
+        keywords="AI Pricing, Construction AI Consulting, AI Implementation Cost"
+      />
       <div className="blob" style={{ top: '10%', right: '5%', background: 'var(--accent-teal)' }}></div>
       
       <div className="container">

@@ -6,6 +6,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import SEO from '../components/SEO';
 
 function BeliefsPage() {
   const beliefs = [
@@ -33,6 +34,11 @@ function BeliefsPage() {
 
   return (
     <div className="beliefs-page" style={{ paddingTop: '8rem', position: 'relative' }}>
+      <SEO 
+        title="Our AI Philosophy"
+        description="Discover our human-centric approach to AI. We believe AI should empower builders, not replace them."
+        keywords="AI Philosophy, Human-Centric AI, Ethics in AI, Construction Tech Values"
+      />
       <div className="blob" style={{ top: '10%', right: '5%' }}></div>
       <div className="blob" style={{ bottom: '10%', left: '5%', background: 'var(--accent-teal)' }}></div>
       
