@@ -4,6 +4,7 @@ import SecurityPage from './pages/SecurityPage';
 import BeliefsPage from './pages/BeliefsPage';
 import ContactPage from './pages/ContactPage';
 import PricingPage from './pages/PricingPage';
+import WebDesignPage from './pages/WebDesignPage';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
           </Link>
           <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
             <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Services</Link>
+            <Link to="/web-design" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Web Design</Link>
             <Link to="/security" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Data Security</Link>
             <Link to="/pricing" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Pricing</Link>
             <Link to="/beliefs" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Our Beliefs</Link>
@@ -26,6 +28,7 @@ function App() {
         {/* Page Content */}
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/web-design" element={<WebDesignPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/beliefs" element={<BeliefsPage />} />
           <Route path="/contact" element={<ContactPage />} />
