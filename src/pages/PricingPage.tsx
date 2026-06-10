@@ -12,26 +12,26 @@ import SEO from '../components/SEO';
 function PricingPage() {
   const packages = [
     {
-      title: "The Foundation",
-      subtitle: "Pilot / Startup",
-      price: "15k",
-      desc: "Rapid local AI setup and basic advisory to prove value in 30 days.",
-      features: ["Local LLM Prototype", "Data Security Audit", "Executive Strategy Session"]
+      title: "Digital Presence",
+      subtitle: "Web Design / Growth",
+      price: "10k+",
+      desc: "High-performance, bespoke web infrastructure designed for technical firms.",
+      features: ["Custom React/Vite Build", "SEO & Performance Tuning", "Responsive UI/UX Design"]
     },
     {
-      title: "The Framework",
-      subtitle: "Scale / Growth",
-      price: "75k",
-      desc: "Full technical implementation and team enablement across your fleet.",
-      features: ["RAG & BIM Integration", "Staff Training & Enablement", "Equipment Maintenance Logs", "Site Evaluation Tools"],
+      title: "Intelligent Infrastructure",
+      subtitle: "AI Integration / Scale",
+      price: "50k+",
+      desc: "Full-scale AI deployment and custom web integration for your operational data.",
+      features: ["Local LLM & RAG Setup", "Technical Workflow Integration", "AI-Powered Site Search", "Equipment & Safety Tooling"],
       popular: true
     },
     {
-      title: "The Skyline",
-      subtitle: "Enterprise",
-      price: "250k",
-      desc: "Continuous transformation and custom model fine-tuning for industry leaders.",
-      features: ["Custom Model Fine-Tuning", "Priority 24/7 Strategic Support", "Global Fleet Optimization", "Dedicated Transformation Lead"]
+      title: "Individualized Pricing",
+      subtitle: "Custom / Enterprise",
+      price: "Bespoke",
+      desc: "Fully tailored digital transformation and custom model development for industry leaders.",
+      features: ["Custom Model Fine-Tuning", "Strategic Multi-Site Rollout", "24/7 Priority Support", "Dedicated Partnership Lead"]
     }
   ];
 
