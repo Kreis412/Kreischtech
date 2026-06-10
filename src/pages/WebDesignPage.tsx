@@ -1,7 +1,7 @@
 import { 
-  Palette, 
-  Zap, 
-  Code2,
+  Monitor, 
+  Search, 
+  ShoppingBag,
   ArrowRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -58,24 +58,24 @@ function WebDesignPage() {
         <div className="card-grid">
           <div className="glass glow-card" style={{ padding: '2.5rem' }}>
             <div style={{ background: 'rgba(0, 210, 255, 0.1)', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <Zap color="var(--accent-blue)" />
+              <Monitor color="var(--accent-blue)" />
             </div>
-            <h3>Extreme Performance</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Lightning-fast load times and optimized core web vitals. We build with modern stacks like React and Vite for zero-lag experiences.</p>
+            <h3>Responsive Architecture</h3>
+            <p style={{ color: 'var(--text-muted)' }}>Multi-device fluidity ensuring your site looks elite on every screen, from field tablets to boardroom monitors.</p>
           </div>
           <div className="glass glow-card" style={{ padding: '2.5rem' }}>
             <div style={{ background: 'rgba(157, 80, 187, 0.1)', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <Palette color="var(--accent-purple)" />
+              <Search color="var(--accent-purple)" />
             </div>
-            <h3>Technical UI/UX</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Designing for complex data and professional workflows. We ensure clarity, precision, and ease of use in every interface.</p>
+            <h3>SEO & Search Dominance</h3>
+            <p style={{ color: 'var(--text-muted)' }}>Precision-engineered metadata and structural SEO to ensure your firm is found by the right decision-makers.</p>
           </div>
           <div className="glass glow-card" style={{ padding: '2.5rem' }}>
             <div style={{ background: 'rgba(0, 242, 254, 0.1)', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <Code2 color="var(--accent-teal)" />
+              <ShoppingBag color="var(--accent-teal)" />
             </div>
-            <h3>AI Integration</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Future-proofing your site with AI-powered features, from intelligent search to automated content management systems.</p>
+            <h3>Custom Digital Commerce</h3>
+            <p style={{ color: 'var(--text-muted)' }}>Advanced storefronts and booking systems integrated directly into your professional workflow.</p>
           </div>
         </div>
       </section>
