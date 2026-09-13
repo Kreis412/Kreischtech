@@ -13,7 +13,7 @@ import {
 import SEO from '../components/SEO';
 
 function AgentOSPage() {
-  const gumroadUrl = "https://kreischtech.gumroad.com/l/agentos";
+  const gumroadUrl = "https://kreischtech.gumroad.com/l/weieu";
 
   return (
     <div className="agentos-page" style={{ position: 'relative', paddingTop: '8rem', paddingBottom: '6rem' }}>

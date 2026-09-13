@@ -8,7 +8,7 @@ import PricingPage from './pages/PricingPage';
 import WebDesignPage from './pages/WebDesignPage';
 
 function App() {
-  const gumroadUrl = "https://kreischtech.gumroad.com/l/agentos";
+  const gumroadUrl = "https://kreischtech.gumroad.com/l/weieu";
 
   return (
     <Router>
