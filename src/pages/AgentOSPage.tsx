@@ -8,7 +8,17 @@ import {
   ShieldCheck, 
   Check, 
   Download,
-  Landmark
+  Landmark,
+  Home,
+  Wind,
+  Truck,
+  HardHat,
+  Zap,
+  Layers,
+  ShieldAlert,
+  Droplets,
+  Building2,
+  ArrowRight
 } from 'lucide-react';
 import SEO from '../components/SEO';
 
@@ -48,13 +58,32 @@ function AgentOSPage() {
             The self-hosted software suite that hunts high-ticket commercial clients, calculates tailored revenue leakage via local AI, and rings your phone when owners want to buy. <strong>Zero monthly cloud token bills. 100% private.</strong>
           </p>
 
-          <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
+          <div style={{ display: 'flex', gap: '1.25rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
             <a href={gumroadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ padding: '1rem 2.5rem', fontSize: '1.1rem', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.75rem', borderRadius: '16px' }}>
               <Download size={20} />
               <span>Get AgentOS Lifetime Access — $197</span>
             </a>
-            <a href="#features" className="btn glass" style={{ padding: '1rem 2rem', fontSize: '1.1rem', color: 'white', textDecoration: 'none', borderRadius: '16px' }}>
+            <a 
+              href="#features" 
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="btn glass" 
+              style={{ padding: '1rem 2rem', fontSize: '1.1rem', color: 'white', textDecoration: 'none', borderRadius: '16px', cursor: 'pointer' }}
+            >
               How It Works
+            </a>
+            <a 
+              href="#niches" 
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById('niches')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="btn glass" 
+              style={{ padding: '1rem 2rem', fontSize: '1.1rem', color: 'white', textDecoration: 'none', borderRadius: '16px', cursor: 'pointer' }}
+            >
+              Supported Niches
             </a>
           </div>
 
@@ -79,8 +108,52 @@ function AgentOSPage() {
           </div>
         </section>
 
-        {/* 5 AGENTS ARCHITECTURE */}
+        {/* HOW IT WORKS: 3-STEP PIPELINE */}
         <section id="features" style={{ marginBottom: '8rem' }}>
+          <div id="how-it-works" />
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <span style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--accent-blue)', fontWeight: 700 }}>Autonomous Pipeline</span>
+            <h2 style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '0.5rem' }}>How It Works: 3 Steps to Sovereign Revenue</h2>
+            <p style={{ color: 'var(--text-muted)', maxWidth: '650px', margin: '0.75rem auto 0' }}>
+              AgentOS runs locally in 60-second autonomous pulses, executing everything from prospect discovery to mobile closing alerts.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+            <div className="glass glow-card" style={{ padding: '2.5rem' }}>
+              <div style={{ display: 'inline-block', padding: '0.35rem 0.75rem', borderRadius: '8px', background: 'rgba(0, 210, 255, 0.15)', color: 'var(--accent-blue)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                Step 1 &bull; Instant Prospecting
+              </div>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 700, marginBottom: '0.75rem' }}>High-Ticket B2B Discovery</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                Agent 2 scans 30+ pre-calibrated multi-market benchmark contractors across 10 trade niches or discovers fresh companies dynamically in your chosen metros.
+              </p>
+            </div>
+
+            <div className="glass glow-card" style={{ padding: '2.5rem' }}>
+              <div style={{ display: 'inline-block', padding: '0.35rem 0.75rem', borderRadius: '8px', background: 'rgba(157, 80, 187, 0.15)', color: 'var(--accent-purple)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                Step 2 &bull; Local AI Audits
+              </div>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 700, marginBottom: '0.75rem' }}>Tailored Financial ROI</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                Agent 3 queries your local Ollama engine (Llama 3.1) to compute exact annual revenue lost from missed field calls ($20k–$100k/yr) without paying monthly cloud API bills.
+              </p>
+            </div>
+
+            <div className="glass glow-card" style={{ padding: '2.5rem' }}>
+              <div style={{ display: 'inline-block', padding: '0.35rem 0.75rem', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', color: 'var(--accent-teal)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '1.25rem' }}>
+                Step 3 &bull; Phone Dispatch
+              </div>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 700, marginBottom: '0.75rem' }}>Instant Mobile Alerts</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                Agent 4 sends CAN-SPAM compliant email pitches via Gmail SMTP. When a prospect replies, Agent 5 rings your phone with an exact 2-minute script to close a monthly retainer.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* 5 AGENTS ARCHITECTURE */}
+        <section id="agents" style={{ marginBottom: '8rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
             <span style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--accent-blue)', fontWeight: 700 }}>Under The Hood</span>
             <h2 style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '0.5rem' }}>Meet Your 5 Autonomous Agents</h2>
@@ -151,6 +224,154 @@ function AgentOSPage() {
               </p>
             </div>
 
+          </div>
+        </section>
+
+        {/* SUPPORTED NICHES & HIGH-TICKET TRADES */}
+        <section id="niches" style={{ marginBottom: '8rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <span style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--accent-blue)', fontWeight: 700 }}>High-Ticket Verticals</span>
+            <h2 style={{ fontSize: '2.5rem', fontWeight: 800, marginTop: '0.5rem' }}>Supported Niches & High-Ticket Trades</h2>
+            <p style={{ color: 'var(--text-muted)', maxWidth: '680px', margin: '0.75rem auto 0' }}>
+              Pre-loaded with 30+ benchmark contractors and tailored pain-point financial models for trades where average job sizes exceed $15,000–$250,000+.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+            
+            {/* 1 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-teal)', background: 'rgba(0, 242, 254, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(0, 242, 254, 0.2)' }}>$25k – $150k Avg Deal</span>
+                <Home size={22} color="var(--accent-teal)" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Commercial Roofing</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Flat roofs, TPO/EPDM membranes, storm damage insurance claims, and missed after-hours leak inspection requests.
+              </p>
+            </div>
+
+            {/* 2 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-blue)', background: 'rgba(0, 210, 255, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(0, 210, 255, 0.2)' }}>$15k – $65k Avg Deal</span>
+                <Wind size={22} color="var(--accent-blue)" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Industrial HVAC & Mechanical</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Rooftop package units, chillers, boiler piping, and emergency breakdown calls that slip to voicemail after 5 PM.
+              </p>
+            </div>
+
+            {/* 3 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>$45k – $250k Avg Deal</span>
+                <Truck size={22} color="#f59e0b" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Excavation & Heavy Civil</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Site prep, earthworks, trenching, grading, and emergency municipal utility strike repairs with slow tender turnaround.
+              </p>
+            </div>
+
+            {/* 4 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>$100k – $1M+ Avg Deal</span>
+                <HardHat size={22} color="#10b981" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Commercial General Contracting</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Tenant improvements, industrial buildouts, subcontractor compliance backlogs, and owner RFI bottlenecks.
+              </p>
+            </div>
+
+            {/* 5 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-purple)', background: 'rgba(157, 80, 187, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(157, 80, 187, 0.2)' }}>$20k – $85k Avg Deal</span>
+                <Zap size={22} color="var(--accent-purple)" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Commercial Electrical & Solar</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                480V panel upgrades, EV fast-chargers, solar tax incentive calculations, and industrial power outage calls.
+              </p>
+            </div>
+
+            {/* 6 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f43f5e', background: 'rgba(244, 63, 94, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(244, 63, 94, 0.2)' }}>$30k – $120k Avg Deal</span>
+                <Layers size={22} color="#f43f5e" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Commercial Concrete & Paving</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Industrial slabs, parking lot milling, slipform paving, and spring/fall rush bidding where quotes lag.
+              </p>
+            </div>
+
+            {/* 7 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>$35k – $160k Avg Deal</span>
+                <ShieldAlert size={22} color="#ef4444" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Fire Protection & Sprinklers</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Quarterly municipal fire marshal inspections, NFPA backflow certification, and after-hours alarm routing.
+              </p>
+            </div>
+
+            {/* 8 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-blue)', background: 'rgba(0, 210, 255, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(0, 210, 255, 0.2)' }}>$25k – $95k Avg Deal</span>
+                <Building2 size={22} color="var(--accent-blue)" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Commercial Glazing & Storefronts</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Curtainwalls, plaza storefront break-in repairs, impact glass lead time tracking, and architectural takeoffs.
+              </p>
+            </div>
+
+            {/* 9 */}
+            <div className="glass glow-card" style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-teal)', background: 'rgba(0, 242, 254, 0.1)', padding: '0.25rem 0.75rem', borderRadius: '50px', border: '1px solid rgba(0, 242, 254, 0.2)' }}>$15k – $55k Avg Deal</span>
+                <Droplets size={22} color="var(--accent-teal)" />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Commercial Plumbing & Piping</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Grease traps, municipal backflow certification, high-rise jetting, industrial boilers, and night dispatches.
+              </p>
+            </div>
+
+          </div>
+
+          {/* Global Expansion Callout */}
+          <div className="glass" style={{ marginTop: '2.5rem', padding: '2rem 2.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', border: '1px solid rgba(0, 210, 255, 0.3)' }}>
+            <div>
+              <h4 style={{ fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                <Globe2 size={20} color="var(--accent-blue)" />
+                <span>Unlimited Custom Trades & Global Geographies</span>
+              </h4>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '750px' }}>
+                Pre-configured for US Metros (Dallas, Houston, Austin, Columbus, Cleveland, Miami, LA) and International Metros (UK, Canada, Australia). Easily expand to any niche in seconds via simple configuration.
+              </p>
+            </div>
+            <a 
+              href="#pricing" 
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="btn btn-primary" 
+              style={{ padding: '0.75rem 1.75rem', fontSize: '0.95rem', fontWeight: 700, borderRadius: '12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+            >
+              <span>Deploy Any Niche</span>
+              <ArrowRight size={16} />
+            </a>
           </div>
         </section>
 

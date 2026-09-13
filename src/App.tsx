@@ -18,12 +18,45 @@ function App() {
           <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '-1px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             Kreischtech <span className="gradient-text">AI</span>
           </Link>
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-            <Link to="/" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 700 }}>AgentOS Software</Link>
+          <div style={{ display: 'flex', gap: '1.4rem', alignItems: 'center' }}>
+            <Link to="/" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 700 }}>AgentOS</Link>
+            <a 
+              href="/#features" 
+              onClick={(e) => {
+                if (window.location.pathname === '/' || window.location.pathname === '/agentos') {
+                  e.preventDefault();
+                  document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+                }
+              }} 
+              style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
+            >
+              How It Works
+            </a>
+            <a 
+              href="/#niches" 
+              onClick={(e) => {
+                if (window.location.pathname === '/' || window.location.pathname === '/agentos') {
+                  e.preventDefault();
+                  document.getElementById('niches')?.scrollIntoView({ behavior: 'smooth' });
+                }
+              }} 
+              style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
+            >
+              Supported Niches
+            </a>
+            <a 
+              href="/#pricing" 
+              onClick={(e) => {
+                if (window.location.pathname === '/' || window.location.pathname === '/agentos') {
+                  e.preventDefault();
+                  document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' });
+                }
+              }} 
+              style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
+            >
+              Pricing
+            </a>
             <Link to="/consulting" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Consulting</Link>
-            <Link to="/web-design" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Web Design</Link>
-            <Link to="/security" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Data Security</Link>
-            <Link to="/pricing" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Pricing</Link>
             <a href={gumroadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ padding: '0.45rem 1.2rem', fontSize: '0.85rem', fontWeight: 800, textDecoration: 'none', borderRadius: '10px' }}>
               Buy AgentOS ($197)
             </a>
