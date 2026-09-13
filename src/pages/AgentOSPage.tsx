@@ -45,7 +45,7 @@ function AgentOSPage() {
         <section style={{ textAlign: 'center', marginBottom: '6rem' }}>
           <div className="glass" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.5rem', marginBottom: '2rem', fontSize: '0.85rem', color: 'var(--accent-blue)', fontWeight: 600 }}>
             <Sparkles size={16} />
-            <span>Turnkey Software Release &bull; Sell the Shovels</span>
+            <span>Built for Entrepreneurs & Agency Founders &bull; Plug & Play Any Niche</span>
           </div>
 
           <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)', fontWeight: 900, lineHeight: 1.15, marginBottom: '2rem', letterSpacing: '-1.5px' }}>
@@ -54,8 +54,8 @@ function AgentOSPage() {
             From Your Laptop in 2 Minutes.
           </h1>
 
-          <p style={{ fontSize: '1.25rem', color: 'var(--text-muted)', maxWidth: '780px', margin: '0 auto 3rem', lineHeight: 1.6 }}>
-            The self-hosted software suite that hunts high-ticket commercial clients, calculates tailored revenue leakage via local AI, and rings your phone when owners want to buy. <strong>Zero monthly cloud token bills. 100% private.</strong>
+          <p style={{ fontSize: '1.25rem', color: 'var(--text-muted)', maxWidth: '820px', margin: '0 auto 3rem', lineHeight: 1.6 }}>
+            Engineered for entrepreneurs who want to sell the shovels: Plug in <strong>any niche, any trade, and any region on earth</strong> in 30 seconds. The self-hosted system hunts high-ticket B2B clients, calculates their lost revenue via local AI, and rings your phone with closing scripts. <strong>Zero monthly cloud token bills. 100% private.</strong>
           </p>
 
           <div style={{ display: 'flex', gap: '1.25rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '3rem' }}>
@@ -104,6 +104,31 @@ function AgentOSPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Globe2 size={18} color="#00f2fe" />
               <span>Global Market & Niche Engine</span>
+            </div>
+          </div>
+
+          {/* ENTREPRENEUR PLUG & PLAY CALLOUT */}
+          <div className="glass" style={{ maxWidth: '900px', margin: '3.5rem auto 0', padding: '1.5rem 2rem', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-around', alignItems: 'center', gap: '1.5rem', border: '1px solid rgba(0, 210, 255, 0.25)' }}>
+            <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(0, 210, 255, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)', fontWeight: 800, fontSize: '1rem' }}>1</div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'white' }}>Plug In Any Niche</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Roofing, HVAC, Solar, Landscaping, or any trade</div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(157, 80, 187, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-purple)', fontWeight: 800, fontSize: '1rem' }}>2</div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'white' }}>Plug In Any Region</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>US Metros, Canada, UK, Australia, or local town</div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(0, 242, 254, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-teal)', fontWeight: 800, fontSize: '1rem' }}>3</div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'white' }}>Run 100% Autonomously</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Local AI hunts, audits, and dispatches $497/mo retainers</div>
+              </div>
             </div>
           </div>
         </section>
