@@ -20,7 +20,8 @@ function AgentOSPage() {
       <SEO 
         title="AgentOS — Autonomous 5-Agent AI Agency in a Box"
         description="Launch an autonomous 5-agent AI client acquisition agency from your laptop in under 2 minutes. Zero coding, zero recurring monthly API fees."
-        keywords="AI Agency, AgentOS, Autonomous Agents, AI Business in a Box, B2B Lead Generation, Ollama Agency"
+        keywords="AgentOS, AI Agency, Autonomous Agents, AI Business in a Box, B2B Lead Generation, Ollama Agency, Local LLM, Sovereign AI"
+        ogImage="https://kreischtech.vercel.app/agentos-og.jpg"
       />
 
       {/* Decorative Blobs */}
