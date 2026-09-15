@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build && cp public/demo.html dist/demo.html",
+  "outputDirectory": "dist",
+  "routes": [
+    { "src": "/demo", "dest": "/demo.html" },
+    { "src": "/demo.html", "dest": "/demo.html" }
+  ]
+}
