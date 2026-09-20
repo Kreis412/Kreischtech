@@ -39,6 +39,9 @@ export function companyUI({api,write,esc,field,selectField,openForm,toast}) {
     return `<section class="portfolio"><div class="section-head"><h2>Project portfolio</h2><span class="count">All reporting periods</span></div><div class="company-metrics four">${metric('Total projects',projects.length,'All projects in this company')}${metric('In progress',projects.filter(p=>p.status==='In progress').length,'Work currently underway')}${metric('Planning',projects.filter(p=>p.status==='Planning').length,'Projects in preparation')}${metric('On hold',projects.filter(p=>p.status==='On hold').length,'Projects currently paused')}</div><details class="panel portfolio-register" open><summary>Project register</summary>${projects.length?`<div class="company-table-wrap"><table><thead><tr><th>Project</th><th>Client</th><th>Type</th><th>Status</th></tr></thead><tbody>${projects.map(p=>`<tr><th><a href="#project/${p.id}">${esc(p.name)}</a></th><td>${esc(p.client||'—')}</td><td>${esc(p.type)}</td><td><span class="badge">${esc(p.status)}</span></td></tr>`).join('')}</tbody></table></div>`:'<p class="notice">No projects in this company yet. <a href="#">Open Projects</a> to create one.</p>'}</details></section>`;
   }
 
+
+ function operationsPortfolio(){return '<section class="panel"><h2>Project operations</h2><p class="notice">Current work and recorded costs across all projects. Schedule indicators reflect entered tasks and reports, not a forecast.</p><div class="company-table-wrap"><table><thead><tr><th>Project</th><th>Manager</th><th>Schedule</th><th>Open work</th><th>Last report</th><th>Known job cost</th></tr></thead><tbody>'+data.portfolio.map(p=>`<tr><th><a href="#project/${p.id}">${esc(p.name)}</a></th><td>${esc(p.setup?.manager||'Unassigned')}</td><td>${esc(p.summary.schedule)}</td><td>${p.summary.open_tasks}</td><td>${esc(p.summary.last_report||'None')}</td><td>${p.cost?money(p.cost.total_cents):'Restricted'}</td></tr>`).join('')+'</tbody></table></div></section>';}
+
   async function load() {
     const ticket=++serial;
     if (!host || !current()) return;
@@ -46,6 +49,8 @@ export function companyUI({api,write,esc,field,selectField,openForm,toast}) {
     try {
       const result=await api(`/api/company?year=${year}&quarter=${quarter}`);
       if (ticket!==serial || !current()) return;
+      result.portfolio=await api("/api/operations/portfolio");
+      if(ticket!==serial||!current())return;
       data=result; render();
     } catch(e) { if(ticket===serial && current()) host.innerHTML=`<div class="error" role="alert">${esc(e.message)}</div><button data-company="refresh">Try again</button>`; }
     finally { if(ticket===serial) host.removeAttribute('aria-busy'); }
@@ -56,7 +61,7 @@ export function companyUI({api,write,esc,field,selectField,openForm,toast}) {
     const period=quarter==='all'?`${year} full year`:`${year} · Q${quarter}`;
     host.innerHTML=`<section class="page-heading"><div><div class="eyebrow">Company reporting</div><h1>${statistics ? 'Statistics' : 'Company overview'}</h1><p>${statistics ? 'Financial performance, project duration and customer metrics.' : 'Project portfolio, financial activity and operational oversight.'}</p></div><div class="heading-actions"><button class="primary" data-company="add">Record transaction</button>${statistics?'<a class="button" href="#company">Company overview</a>':'<a class="button" href="#statistics">View charts</a>'}</div></section>
       <form id="company-period" class="company-filters"><label>Year<input name="year" type="number" min="2000" max="2100" step="1" required value="${year}"></label><label>Period<select name="quarter"><option value="all" ${quarter==='all'?'selected':''}>Full year</option>${[1,2,3,4].map(q=>`<option value="${q}" ${quarter===String(q)?'selected':''}>Q${q} · ${['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'][q-1]}</option>`).join('')}</select></label><button type="submit">View totals</button><button type="button" class="subtle" data-company="refresh">↻ Refresh</button></form>
-      <div data-company-page="company">${portfolio()}<div class="section-head"><h2>Cash activity <span class="count">${period}</span></h2></div><p class="notice">Cash activity reflects recorded receipts and disbursements. Refunds reduce the matching total; voided entries do not count. Net cash flow is not accounting profit.</p>
+      <div data-company-page="company">${portfolio()}${operationsPortfolio()}<div class="section-head"><h2>Cash activity <span class="count">${period}</span></h2></div><p class="notice">Cash activity reflects recorded receipts and disbursements. Refunds reduce the matching total; voided entries do not count. Net cash flow is not accounting profit.</p>
       <div class="company-metrics">${metric('Cash receipts',money(totals.received_cents),'Customer payments minus refunds')}${metric('Cash disbursements',money(totals.spent_cents),'Paid expenses minus supplier refunds')}${metric('Net cash flow',money(totals.net_cents),`${totals.entry_count} recorded entries · not net profit`)}</div>
       ${!totals.entry_count?'<div class="company-empty">No transactions in this period yet. Add payments and expenses with <strong>Record transaction</strong>; estimates never become actual cash automatically.</div>':''}
       </div><div data-company-page="statistics">${charts()}</div><div data-company-page="company">

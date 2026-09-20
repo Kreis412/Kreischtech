@@ -32,3 +32,7 @@ Before hosting, choose a persistent backend/database and storage strategy, exter
 ## Product direction preserved
 
 Your expertise. Less busywork. More time to build. Photo analysis flags concerns with evidence and uncertainty; it never certifies suitability or removes professional/human review. Residential and deck evidence workflows first, with commercial analysis separately validated. Company-wide reporting, project managers, schedules and recovery planning are core product goals for businesses of all sizes. The owner's basement is a test case, not the product's market boundary.
+
+### Project operations
+`operations.mjs` persists reviewed findings, linked work, crew assignments, time approvals and manager reports per company SQLite database. The gateway passes actor identity from the authenticated session. Approved labor freezes rate/burden and permits void corrections only. Operations responses redact rate/cost fields for Viewers. This does not make the Viewer role customer-safe: existing cash reporting remains accessible.
+Automated image interpretation, payroll, time-clock capture, task dependencies, resource capacity forecasts, and hosted phone synchronization are not implemented. Current schedule indicators use overdue/blocked tasks and report freshness. Cost comparison uses latest estimate snapshot, not a controlled contract budget. Public release gates remain unchanged.

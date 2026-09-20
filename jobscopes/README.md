@@ -68,3 +68,18 @@ The existing TypeScript check and Vite production build pass. The existing four 
 Company now shows a company-wide project register, status totals and financial activity. Statistics contains the bar and pie charts; Company has a View charts link. Empty charts display clearly labeled no-data states, not invented transactions. Financial actions use Record transaction, Cash receipts, Cash disbursements, Net cash flow, Expense breakdown and Transaction ledger.
 
 Settings groups Company & team, Appearance, and Security & backups. The top-right Dark mode button shows its current state; Appearance provides the same saved preference. Old #team and #security links redirect to their Settings sections. Browser checks covered navigation, security access, old links, empty charts, theme persistence and the 390px layout without horizontal page overflow or console errors.
+
+## Connected project workspace (September 20, 2026)
+
+Open a project and use **Project workspace**:
+1. Upload evidence in **Site photos**. In **Site review**, record observations, uncertainty, verification steps and review notes. This is human-guided review; automated image analysis is not connected.
+2. Confirm a finding to create its linked work item. Assign tasks/milestones, due dates and blockers. Existing Discovery Log records remain available separately.
+3. Add company crew members with internal hourly cost rates and optional additional burden, then assign them to projects. Crew records are not login accounts.
+4. Record minutes worked. Pending time contributes no cost; approval freezes the current rate and burden. Approved entries can only be voided with a reason, then corrected with a new entry.
+5. Record project expenses. Known job cost is approved labor plus non-Labor recorded expenses less supplier refunds. Labor-category ledger payments are excluded to avoid duplicate payroll/time costs. Record all employee labor through time entries. Commitments, unrecorded expenses and forecasts are not included.
+6. Save an estimate snapshot for cost comparison. This uses the latest snapshot cost, not selling price or an approved contract budget. Unresolved estimate gaps remain flagged.
+7. Add manager progress reports. Company overview shows schedule indicators, manager, open work, last report and known costs across projects. These indicators describe entered records; they do not guarantee schedule performance.
+
+Owner and Manager roles can manage operations and view internal rates/costs. Viewers receive redacted operational cost fields and cannot edit. Existing company cash reporting remains visible to Viewers; this is an internal office role, not customer access.
+
+Start using `START_JOBSCOPES.bat` in this folder, or `node server.mjs`, then open http://localhost:3200. The authenticated preview remains local-only. Tests: `node --test` (39 passing). An isolated browser test verified finding-to-task creation, crew assignment, approved labor cost, and phone-size layout. Real company data was not seeded with test entries.

@@ -1,3 +1,4 @@
+import { operationsUI } from '/operations.js';
 import { accountUI } from '/accounts.js';
 import { securityUI } from '/security.js';
 import { materialUI } from '/materials.js';
@@ -29,7 +30,7 @@ const slug = value => value.toLowerCase().replaceAll(' ', '-');
 const badge = value => `<span class="badge ${slug(value)}">${esc(value)}</span>`;
 const date = value => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const options = (list, selected) => list.map(v => `<option value="${esc(v)}" ${v === selected ? 'selected' : ''}>${esc(v)}</option>`).join('');
-let projects = [], current = null, tab = 'discoveries', loadId = 0, toastTimer;
+let projects = [], current = null, tab = 'operations', loadId = 0, toastTimer;
 let filters = { query: '', status: '', type: '' };
 async function api(path, opts = {}) {
   let response;
@@ -40,6 +41,7 @@ async function api(path, opts = {}) {
 }
 const write = (path, method, value) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 const materials = materialUI({ api, write, esc, field, selectField: (...args) => selectField(...args), openForm, toast, getProject: () => current });
+const operations = operationsUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast});
 const security = securityUI({api,esc});
 const account = accountUI({api,write,esc,host:main,openForm,field,selectField:(...args)=>selectField(...args),toast});
 const company = companyUI({ api, write, esc, field, selectField: (...args) => selectField(...args), openForm, toast });
@@ -70,9 +72,10 @@ function projectView() {
     <div class="detail-layout"><section><div class="tabs" role="tablist" aria-label="Project details"><button id="discoveries-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'discoveries'}" data-action="discoveries">Discovery Log <span class="count">${p.discoveries.length}</span></button><button id="photos-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'photos'}" data-action="photos">Site photos <span class="count">${p.photos.length}</span></button></div><div id="tab-content" role="tabpanel" aria-labelledby="${tab}-tab"></div></section>
     <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT / HOMEOWNER</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Automated site evaluation is not part of this version.</p></section></aside></div>`;
   const tabs = main.querySelector('.tabs');
+  tabs.insertAdjacentHTML('afterbegin', `<button id="operations-tab" role="tab" aria-controls="tab-content" aria-selected="${tab==='operations'}" data-action="operations">Project workspace</button>`);
   tabs.insertAdjacentHTML('beforeend', `<button id="materials-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'materials'}" data-action="materials">Materials & estimate</button>`);
   tabs.querySelectorAll('[role=tab]').forEach(button => button.tabIndex = button.getAttribute('aria-selected') === 'true' ? 0 : -1);
-  if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
+  if(tab === 'operations') operations.mount($('#tab-content'),p); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
 }
 function discoveryView() {
   const entries = current.discoveries;
@@ -189,6 +192,7 @@ main.addEventListener('click', e => {
     case 'edit-discovery': discoveryForm(button.dataset.id); break;
     case 'refresh': load(); break;
     case 'clear-filters': filters = { query: '', status: '', type: '' }; dashboard(); break;
+    case 'operations': tab = 'operations'; projectView(); $('#operations-tab').focus(); break;
     case 'discoveries': tab = 'discoveries'; projectView(); $('#discoveries-tab').focus(); break;
     case 'photos': tab = 'photos'; projectView(); $('#photos-tab').focus(); break;
     case 'materials': tab = 'materials'; projectView(); $('#materials-tab').focus(); break;
@@ -197,8 +201,8 @@ main.addEventListener('click', e => {
   }
 });
 main.addEventListener('keydown', e => {
-  if (e.target.matches('[role=tab]') && ['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); const tabs = ['discoveries', 'photos', 'materials']; tab = tabs[(tabs.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : 2)) % 3]; projectView(); $(`#${tab}-tab`).focus(); }
+  if (e.target.matches('[role=tab]') && ['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); const tabs = ['operations', 'discoveries', 'photos', 'materials']; tab = tabs[(tabs.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : 3)) % 4]; projectView(); $(`#${tab}-tab`).focus(); }
 });
-window.addEventListener('hashchange', () => { tab = 'discoveries'; load(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { tab = 'operations'; load(); window.scrollTo(0, 0); });
 window.addEventListener('offline', () => toast('You’re offline. Reconnect before saving changes.', true));
 load();
