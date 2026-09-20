@@ -72,7 +72,7 @@ Settings groups Company & team, Appearance, and Security & backups. The top-righ
 ## Connected project workspace (September 20, 2026)
 
 Open a project and use **Project workspace**:
-1. Upload evidence in **Site photos**. In **Site review**, record observations, uncertainty, verification steps and review notes. This is human-guided review; automated image analysis is not connected.
+1. Upload evidence in **Site photos**. In **Site review**, record observations, uncertainty, verification steps and review notes. Experimental local photo analysis is available through Ollama; human review is required.
 2. Confirm a finding to create its linked work item. Assign tasks/milestones, due dates and blockers. Existing Discovery Log records remain available separately.
 3. Add company crew members with internal hourly cost rates and optional additional burden, then assign them to projects. Crew records are not login accounts.
 4. Record minutes worked. Pending time contributes no cost; approval freezes the current rate and burden. Approved entries can only be voided with a reason, then corrected with a new entry.
@@ -83,3 +83,15 @@ Open a project and use **Project workspace**:
 Owner and Manager roles can manage operations and view internal rates/costs. Viewers receive redacted operational cost fields and cannot edit. Existing company cash reporting remains visible to Viewers; this is an internal office role, not customer access.
 
 Start using `START_JOBSCOPES.bat` in this folder, or `node server.mjs`, then open http://localhost:3200. The authenticated preview remains local-only. Tests: `node --test` (39 passing). An isolated browser test verified finding-to-task creation, crew assignment, approved labor cost, and phone-size layout. Real company data was not seeded with test entries.
+
+## Experimental local photo analysis — no cloud API credits
+
+Prerequisites: Ollama running on this computer, with the already-installed `gemma3:4b` vision model. No downloads, Google requests, subscriptions or paid APIs were used in this milestone. Local computation uses the laptop's memory/GPU/electricity.
+
+Open a project → Site photos → upload a photo → Project workspace → **Analyze photo locally**. Choose a photo and optionally supply the intended work and known facts. Analysis saves draft findings marked **Needs review**, with model and photo provenance. Review/edit/dismiss each draft before confirming it or creating work. The model may confuse supplied facts with image observations; verify measurements yourself. Existing manual Discovery Log records are unchanged.
+
+Implementation sends only the selected image and the entered context to fixed loopback `127.0.0.1:11434`; no project finances, addresses, account secrets or other photos are included automatically. It checks model vision capability, rejects advertised cloud routing, prevents HTTP redirects, requests schema-constrained output, and validates every draft before a single transaction saves the result. Requests are limited to one analysis at a time in this server, with a three-minute timeout and `keep_alive: 0` to unload after generation. Owner/Manager only. The model name is fixed for this trial; no auto-download or cloud fallback. Repeating the same photo returns its saved result, regardless of changed context; edit the resulting findings rather than rerunning it in this milestone.
+
+Validation: 42 automated tests pass. Three local trials on the user's supplied basement image took approximately 9–16 seconds on this laptop. The first was poor (clutter emphasis and speculative damage); revised instructions improved relevance, but the model still missed low ductwork and used ambiguous construction/acoustic wording. This is NOT a release-quality validation or evidence of reliable commercial site assessment. No findings from these trials were inserted into the user's actual project; browser/API trials used the separate ignored test workspace. Automated photo analysis requires a labeled evaluation set and a quality gate before public release.
+
+Gemini CLI was found installed but not invoked or connected. A future cloud comparison needs separate review of account quota, data handling and deployment suitability. Official API references: https://docs.ollama.com/api/chat and https://docs.ollama.com/capabilities/structured-outputs

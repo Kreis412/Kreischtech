@@ -84,7 +84,7 @@ export function operationsStore(db,estimates) {
       if(b.photo_id&&!db.prepare('SELECT id FROM photos WHERE id=? AND project_id=?').get(b.photo_id,pid))fail(400,'Choose a photo from this project.');
       const status=choice(b.status,['Needs review','Confirmed','Dismissed','Specialist needed']);
       content={title:str(b.title,'finding title',160,true),location:str(b.location||'','site location',200),observation:str(b.observation,'observation',3000,true),uncertainty:str(b.uncertainty||'','uncertainty'),next_step:str(b.next_step||'','next verification step'),photo_id:b.photo_id||null,status,
-        review_notes:str(b.review_notes||'','review notes',2000,status!=='Needs review'),reviewed_by:status==='Needs review'?null:actor.name,reviewed_at:status==='Needs review'?null:new Date().toISOString(),source:'Human observation'};
+        review_notes:str(b.review_notes||'','review notes',2000,status!=='Needs review'),reviewed_by:status==='Needs review'?null:actor.name,reviewed_at:status==='Needs review'?null:new Date().toISOString(),source:old?.source||'Human observation',...(old?.analysis_id?{analysis_id:old.analysis_id,model:old.model}:{})};
     }
     if(kind==='tasks'){
       const source=old?.finding_id||b.finding_id; const finding=source?get(pid,'findings',source):null;
