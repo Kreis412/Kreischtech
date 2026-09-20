@@ -109,3 +109,16 @@ Owners/Managers decide; Viewers can read history only. A current Proceed or Reso
 History records original/revised finding snapshots, authenticated actor identity/role, timestamps, reasons and evidence. Records cannot be edited or deleted through the application; SQLite triggers enforce append-only rows. This is not tamper-proof storage against someone controlling the local database/files. Existing pre-feature findings gain their baseline snapshot on their next edit/decision; earlier overwritten versions cannot be reconstructed. Backups include the history table.
 
 Validation: 43 automated tests passing, including stale decisions, role checks, evidence ownership, work authorization, finding changes and append-only enforcement. Browser test performed only in the isolated test company.
+
+## Ask Joe — construction assistant preview
+
+**Ask Joe** is a dedicated page for residential/commercial planning, estimating checklists, sequencing, crew questions and general help. Uses installed `llama3.1:8b` through local Ollama; no paid service or downloads. This is construction-focused prompting, not a certified expert model or a current code database. Joe has no web access, cannot inspect photos in chat, and can be wrong.
+
+- General or project conversation; the latest 12 exchanges are displayed and up to 3 recent exchanges provide conversational context.
+- Project context is opt-in. Includes bounded project scope/notes, latest findings/decisions and work items. No financial tables, crew rates, account credentials, photo bytes, client/address fields are automatically included. User-entered notes may contain private data. Switching context off excludes previous exchanges that used project context.
+- History is separated by authenticated user inside each company database. Owners' database backups include all chats; history is not confidential from database administrators.
+- Owners/Managers can **Review as project notes**, edit the draft, and explicitly **Save notes**. Only Scope & notes changes, with normal revision conflict protection. No automatic project edits, cost changes, approvals or external actions. Viewers may chat but cannot apply edits.
+- **Settings → Joe assistant** enables optional site-wide reminders (off by default). They are local page-based suggestions, not AI-generated scans. Dismiss for the current tab session or disable site-wide in this browser.
+- No background inference. Joe and photo analysis share a single request lock. The model is unloaded after a completed response. Navigation and normal API requests remain asynchronous; local inference can still use substantial laptop resources while answering. The laptop must keep the server and Ollama available; hosted/mobile synchronization is still a separate release gate.
+
+Validation: 45 automated tests pass, including private history, foreign-project rejection, retry handling, provider boundary, shared busy lock and failure cleanup. Browser trial used a disposable project to ask for a scope draft and save a human-edited version. A lightweight API response measured 24 ms during the test session; this is not a load-test or performance guarantee.

@@ -1,3 +1,4 @@
+import { joeUI } from '/joe.js';
 import { operationsUI } from '/operations.js';
 import { accountUI } from '/accounts.js';
 import { securityUI } from '/security.js';
@@ -42,6 +43,7 @@ async function api(path, opts = {}) {
 const write = (path, method, value) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 const materials = materialUI({ api, write, esc, field, selectField: (...args) => selectField(...args), openForm, toast, getProject: () => current });
 const operations = operationsUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast});
+const joe = joeUI({api,write,esc,openForm,field,toast});
 const security = securityUI({api,esc});
 const account = accountUI({api,write,esc,host:main,openForm,field,selectField:(...args)=>selectField(...args),toast});
 const company = companyUI({ api, write, esc, field, selectField: (...args) => selectField(...args), openForm, toast });
@@ -148,7 +150,7 @@ function discoveryForm(id) {
 }
 
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/appearance','Appearance'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView() {
   const dark=document.documentElement.dataset.theme==='dark';
@@ -161,27 +163,30 @@ async function load() {
   if (location.hash === '#security') history.replaceState(null,'','#settings/security');
   const ticket = ++loadId; const match = location.hash.match(/^#project\/([\w-]+)$/);
   document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : ['#company','#statistics'].includes(location.hash) ? location.hash : '#');
+    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : ['#company','#statistics'].includes(location.hash) ? location.hash : '#');
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (dialog.open) dialog.close();
   main.setAttribute('aria-busy', 'true');
   try {
+    joe.hide();
     if (!await account.check()) return;
     if (ticket !== loadId) return;
     if (location.hash.startsWith('#settings')) {
       main.onclick=null;current=null;$('#breadcrumb').textContent='Settings';
       if(location.hash==='#settings/security') await security.mount(main);
       else if(location.hash==='#settings/appearance') appearanceView();
+      else if(location.hash==='#settings/assistant') joe.settings(main);
       else await account.mount();
       if(ticket!==loadId)return;
       main.insertAdjacentHTML('afterbegin',settingsNavigation());
     }
+    else if (/^#joe(?:\/[\w-]+)?$/.test(location.hash)) {current=null; $('#breadcrumb').textContent='Ask Joe'; await joe.mount(main,location.hash.split('/')[1]||'');}
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Statistics' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }
     else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; $('#breadcrumb').textContent = 'Projects'; dashboard(); }
   } catch (e) { if (ticket === loadId) main.innerHTML = empty('Workspace unavailable', esc(e.message), '<button data-action="refresh">Try again</button> <a class="button" href="#">All projects</a>'); }
-  finally { if (ticket === loadId) main.removeAttribute('aria-busy'); }
+  finally { if (ticket === loadId) {main.removeAttribute('aria-busy');joe.widgets(current);} }
 }
 main.addEventListener('click', e => {
   const button = e.target.closest('[data-action]'); if (!button) return;

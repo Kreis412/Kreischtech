@@ -1,3 +1,4 @@
+import { joeStore } from './joe.mjs';
 import { analysisStore } from './analysis.mjs';
 import { operationsStore } from './operations.mjs';
 import { createServer } from 'node:http';
@@ -60,6 +61,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
   const company = companyStore(db, estimates);
   const operations = operationsStore(db, estimates);
   const analysis = analysisStore(db);
+  const joe = joeStore(db);
   let backupRunning = false;
   const project = id => db.prepare('SELECT * FROM projects WHERE id = ?').get(id) || fail(404, 'Project not found.');
   const photos = id => db.prepare('SELECT id, project_id, name, mime, created_at FROM photos WHERE project_id = ? ORDER BY created_at DESC').all(id);
@@ -86,6 +88,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
           return send(200, encrypted, 'application/octet-stream');
         } finally { backupRunning = false; }
       }
+      if (await joe.handle(req,url,project,json,send)) return;
       if (await analysis.handle(req, url, project, json, send)) return;
       if (await operations.handle(req, url, project, json, send)) return;
       if (await company.handle(req, url, json, send)) return;

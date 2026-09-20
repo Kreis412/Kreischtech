@@ -1,6 +1,7 @@
+import { acquireLocalModel,localModelBusy } from './local-model.mjs';
 import {randomUUID} from 'node:crypto';
 const MODEL='gemma3:4b', BASE='http://127.0.0.1:11434';
-let busy=false;
+
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 export const schema={type:'object',additionalProperties:false,required:['summary','findings'],properties:{summary:{type:'string'},findings:{type:'array',maxItems:6,items:{type:'object',additionalProperties:false,required:['title','observation','uncertainty','next_step'],properties:Object.fromEntries(['title','observation','uncertainty','next_step'].map(k=>[k,{type:'string'}]))}}}};
 export function validateResult(value){
@@ -32,7 +33,7 @@ export function analysisStore(db,{analyze=analyzeLocal}={}){
  return {async handle(req,url,project,json,send){
   const m=url.pathname.match(/^\/api\/projects\/([\w-]+)\/analysis$/);if(!m)return false;
   const pid=m[1];project(pid);
-  if(req.method==='GET'){send(200,{provider:'Ollama on this computer',model:MODEL,busy,runs:db.prepare('SELECT * FROM photo_analyses WHERE project_id=? ORDER BY created_at DESC').all(pid)});return true;}
+  if(req.method==='GET'){send(200,{provider:'Ollama on this computer',model:MODEL,busy:localModelBusy(),runs:db.prepare('SELECT * FROM photo_analyses WHERE project_id=? ORDER BY created_at DESC').all(pid)});return true;}
   if(req.method!=='POST')fail(405,'Method not allowed.');
   if(!['Owner','Manager'].includes(req.jobscopesActor?.role||'Owner'))fail(403,'Only owners and managers can run analysis.');
   const b=await json(req);if(typeof b.photo_id!=='string')fail(400,'Choose a project photo.');
@@ -40,8 +41,7 @@ export function analysisStore(db,{analyze=analyzeLocal}={}){
   if(typeof (b.context||'')!=='string'||(b.context||'').length>2000)fail(400,'Context must be at most 2000 characters.');
   const previous=db.prepare('SELECT * FROM photo_analyses WHERE project_id=? AND photo_id=? AND model=?').get(pid,photo.id,MODEL);
   if(previous){send(200,{...previous,reused:true});return true;}
-  if(busy)fail(429,'Another local photo analysis is running. Please wait before starting another.');
-  busy=true;
+  const release=acquireLocalModel();
   try{
    const result=validateResult(await analyze(Buffer.from(photo.content),b.context||''));
    const id=randomUUID(),now=new Date().toISOString(),actor=req.jobscopesActor?.name||'Local operator';
@@ -52,6 +52,6 @@ export function analysisStore(db,{analyze=analyzeLocal}={}){
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
    send(201,{id,summary:result.summary,count:result.findings.length,model:MODEL,reused:false});return true;
-  }finally{busy=false;}
+  }finally{release();}
  }};
 }
