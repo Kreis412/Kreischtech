@@ -95,3 +95,17 @@ Implementation sends only the selected image and the entered context to fixed lo
 Validation: 42 automated tests pass. Three local trials on the user's supplied basement image took approximately 9–16 seconds on this laptop. The first was poor (clutter emphasis and speculative damage); revised instructions improved relevance, but the model still missed low ductwork and used ambiguous construction/acoustic wording. This is NOT a release-quality validation or evidence of reliable commercial site assessment. No findings from these trials were inserted into the user's actual project; browser/API trials used the separate ignored test workspace. Automated photo analysis requires a labeled evaluation set and a quality gate before public release.
 
 Gemini CLI was found installed but not invoked or connected. A future cloud comparison needs separate review of account quota, data handling and deployment suitability. Official API references: https://docs.ollama.com/api/chat and https://docs.ollama.com/capabilities/structured-outputs
+
+## Human decisions and overrides
+Each site finding now has **Record decision**:
+- Proceed: reason required; authorizes linked work without changing observation status or certifying safety.
+- Resolved: reason plus written resolution evidence or a project photo required.
+- Deferred: reason, responsible person and today/future review date required. Due reviews appear in suggested actions.
+- Specialist review: records the request; does not contact anyone automatically.
+- Reopened: withdraws prior work authorization pending a new decision.
+
+Owners/Managers decide; Viewers can read history only. A current Proceed or Resolved decision allows work from an otherwise unconfirmed finding. Deferred, Specialist review and Reopened decisions hold linked work; explicit task blockers remain in force. Existing confirmed findings without decisions retain their prior behavior. Revising a finding invalidates its earlier decision; record a new decision after reviewing the change. Completed tasks are not silently reopened.
+
+History records original/revised finding snapshots, authenticated actor identity/role, timestamps, reasons and evidence. Records cannot be edited or deleted through the application; SQLite triggers enforce append-only rows. This is not tamper-proof storage against someone controlling the local database/files. Existing pre-feature findings gain their baseline snapshot on their next edit/decision; earlier overwritten versions cannot be reconstructed. Backups include the history table.
+
+Validation: 43 automated tests passing, including stale decisions, role checks, evidence ownership, work authorization, finding changes and append-only enforcement. Browser test performed only in the isolated test company.

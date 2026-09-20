@@ -1,3 +1,4 @@
+import { decisionStore } from './decisions.mjs';
 import { randomUUID } from 'node:crypto';
 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -22,6 +23,7 @@ export function operationsStore(db,estimates) {
     revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS operations_project ON operations_records(project_id,kind);
     CREATE INDEX IF NOT EXISTS operations_kind ON operations_records(kind);`);
+  const decisions=decisionStore(db);
   const unpack=r=>r?{...JSON.parse(r.data),id:r.id,project_id:r.project_id,revision:r.revision,created_at:r.created_at,updated_at:r.updated_at}:null;
   const rows=(pid,kind)=>db.prepare('SELECT * FROM operations_records WHERE project_id IS ? AND kind=? ORDER BY created_at,id').all(pid,kind).map(unpack);
   const get=(pid,kind,id)=>unpack(db.prepare('SELECT * FROM operations_records WHERE project_id IS ? AND kind=? AND id=?').get(pid,kind,id))||fail(404,'Record not found in this project.');
@@ -33,11 +35,12 @@ export function operationsStore(db,estimates) {
   }
   const crewSafe=(crew,costs)=>costs?crew:crew.map(({rate_cents,burden_bp,...person})=>person);
   function state(pid,costs=true){
-    const findings=rows(pid,'findings'),tasks=rows(pid,'tasks'),assignments=rows(pid,'assignments'),time=rows(pid,'time'),reports=rows(pid,'reports').reverse(),setup=rows(pid,'setup')[0]||null;
+    const findings=rows(pid,'findings').map(decisions.decorate),tasks=rows(pid,'tasks'),assignments=rows(pid,'assignments'),time=rows(pid,'time'),reports=rows(pid,'reports').reverse(),setup=rows(pid,'setup')[0]||null;
+    const decisionDue=findings.filter(f=>f.decision_current&&f.decision.action==='Deferred'&&f.decision.review_date<=today());
     const crew=rows(null,'crew');
     const open=tasks.filter(t=>!['Complete','Cancelled'].includes(t.status));
     const overdue=open.filter(t=>t.due && t.due<today());
-    const blocked=open.filter(t=>t.status==='Blocked'||(t.finding_id&&findings.find(f=>f.id===t.finding_id)?.status!=='Confirmed'));
+    const blocked=open.filter(t=>t.status==='Blocked'||(t.finding_id&&!findings.find(f=>f.id===t.finding_id)?.work_authorized));
     const lastReport=[...reports].sort((a,b)=>b.date.localeCompare(a.date)||b.created_at.localeCompare(a.created_at))[0];
     const stale=!lastReport || (new Date(today())-new Date(lastReport.date))/86400000>7;
     const scheduled=tasks.some(t=>t.due&&t.status!=='Cancelled');
@@ -55,11 +58,12 @@ export function operationsStore(db,estimates) {
         remaining_cents:snapshot?snapshot.total_cents-labor-expense:null};
     }
     return {today:today(),findings,tasks,assignments,crew:crewSafe(crew,costs),time:costs?time:time.map(({rate_cents,burden_bp,cost_cents,...entry})=>entry),reports,setup,cost,
-      summary:{schedule,overdue:overdue.length,blocked:blocked.length,stale_report:stale,last_report:lastReport?.date||null,open_tasks:open.length,unreviewed:findings.filter(f=>['Needs review','Specialist needed'].includes(f.status)).length},
-      recovery:[...overdue.map(t=>`Review the due date and resources for “${t.title}”.`),...blocked.map(t=>`Resolve the blocker or review the source finding for “${t.title}”.`),...(stale?['Request a current progress report from the project manager.']:[])].slice(0,12)};
+      summary:{decision_reviews_due:decisionDue.length,schedule,overdue:overdue.length,blocked:blocked.length,stale_report:stale,last_report:lastReport?.date||null,open_tasks:open.length,unreviewed:findings.filter(f=>['Needs review','Specialist needed'].includes(f.status)).length},
+      recovery:[...decisionDue.map(f=>`Review deferred concern “${f.title}” with ${f.decision.responsible}; due ${f.decision.review_date}.`),...overdue.map(t=>`Review the due date and resources for “${t.title}”.`),...blocked.map(t=>`Resolve the blocker or review the source finding for “${t.title}”.`),...(stale?['Request a current progress report from the project manager.']:[])].slice(0,12)};
   }
   return {state,async handle(req,url,project,json,send){
     const actor=req.jobscopesActor||{id:'local-operator',name:'Local operator',role:'Owner'};
+    if(await decisions.handle(req,url,project,json,send))return true;
     const costs=['Owner','Manager'].includes(actor.role);
     const crewMatch=url.pathname.match(/^\/api\/operations\/crew(?:\/([\w-]+))?$/);
     const match=url.pathname.match(/^\/api\/projects\/([\w-]+)\/operations(?:\/(findings|tasks|assignments|time|reports|setup)(?:\/([\w-]+))?)?$/);
@@ -88,7 +92,7 @@ export function operationsStore(db,estimates) {
     }
     if(kind==='tasks'){
       const source=old?.finding_id||b.finding_id; const finding=source?get(pid,'findings',source):null;
-      if(finding&&finding.status!=='Confirmed'&&(!old||!['Blocked','Cancelled'].includes(b.status)))fail(400,'Confirm the source finding before assigning work from it.');
+      if(finding&&!decisions.decorate(finding).work_authorized&&(!old||!['Blocked','Cancelled'].includes(b.status)))fail(400,'Review the finding or record an authorized proceed decision before assigning work.');
       if(finding&&rows(pid,kind).some(t=>t.finding_id===finding.id&&t.id!==id))fail(409,'This finding already has a work item. Edit that item instead.');
       if(b.assignee_id&&!rows(pid,'assignments').some(a=>a.crew_id===b.assignee_id))fail(400,'Assign this worker to the project first.');
       const status=choice(b.status,['Planned','In progress','Blocked','Complete','Cancelled']);
@@ -112,6 +116,13 @@ export function operationsStore(db,estimates) {
       }
     }
     if(kind==='reports')content={date:date(b.date,true,true),summary:str(b.summary,'progress summary',3000,true),blockers:str(b.blockers||'','blockers',2000),next_steps:str(b.next_steps||'','next actions',2000),author:actor.name};
-    const saved=save(pid,kind,id,b,content);send(old?200:201,saved);return true;
+    let saved;
+    if(kind==='findings'){
+      db.exec('BEGIN IMMEDIATE');try{
+        if(old&&!decisions.decorate(old).history.length)decisions.snapshot(old,actor,'Original finding');
+        saved=save(pid,kind,id,b,content);decisions.snapshot(saved,actor,old?'Finding revised':'Finding recorded');db.exec('COMMIT');
+      }catch(e){db.exec('ROLLBACK');throw e;}
+    }else saved=save(pid,kind,id,b,content);
+    send(old?200:201,saved);return true;
   }};
 }
