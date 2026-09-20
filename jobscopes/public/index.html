@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183e35">
+  <title>JobScopes by KreischTech</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a href="#" class="brand"><img src="/icon.svg" alt="" width="38" height="38"><span>JobScopes<small>by KreischTech</small></span></a>
+    <div class="workspace-label">YOUR WORKSPACE</div>
+    <a href="#" class="nav-link"><span aria-hidden="true">▦</span> Projects <span aria-hidden="true">↗</span></a>
+    <a href="#company" class="nav-link company-nav"><span aria-hidden="true">◴</span> Company <span aria-hidden="true">↗</span></a>
+    <a href="#statistics" class="nav-link company-nav"><span aria-hidden="true">▥</span> Statistics <span aria-hidden="true">↗</span></a>
+    <a href="#security" class="nav-link company-nav"><span aria-hidden="true">◇</span> Security <span aria-hidden="true">↗</span></a>
+    <a href="#team" class="nav-link company-nav"><span aria-hidden="true">♧</span> Company & team <span aria-hidden="true">↗</span></a>
+    <div class="sidebar-note"><span class="small-mark">K</span><strong>Built for the jobsite.</strong><p>From the first walkthrough<br>to the final detail.</p></div>
+    <div class="workspace-footer"><span class="dot"></span> Private preview<small>Company workspaces</small></div>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><span>Workspace <span class="slash">/</span> <strong id="breadcrumb">Projects</strong></span><button id="theme-toggle" aria-pressed="false">Dark mode</button></header>
+    <div id="account-bar" class="account-bar"></div>
+    <main id="main" tabindex="-1"><div class="empty">Loading your workspace…</div></main>
+    <footer class="page-footer">KREISCHTECH <span>Made for work that matters.</span></footer>
+  </div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="editor" aria-labelledby="dialog-title"><form id="editor-form"></form></dialog>
+</body>
+</html>

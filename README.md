@@ -48,3 +48,7 @@ npm run build
 ```bash
 npm run test
 ```
+
+## JobScopes product preview
+
+The separate company-and-team application is in [jobscopes/](jobscopes/README.md). It runs locally on port 3200 and does not change this marketing site's Vercel deployment.

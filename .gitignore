@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# JobScopes private runtime data and local credentials
+jobscopes/data/
+jobscopes/test-results/
+jobscopes/backups/
+*.sqlite
+*.sqlite-*
+*.jobscopes
+.env
+.env.*
+!.env.example
