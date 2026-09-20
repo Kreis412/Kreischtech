@@ -9,13 +9,15 @@ try { savedTheme = localStorage.getItem('jobscopes-theme'); } catch {}
 function setTheme(dark) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   themeButton.setAttribute('aria-pressed', String(dark));
-  themeButton.textContent = dark ? '☀ Light mode' : '☾ Dark mode';
+  themeButton.textContent = dark ? 'Dark mode: On' : 'Dark mode: Off';
+  themeButton.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
   document.querySelector('meta[name="theme-color"]').content = dark ? '#101e23' : '#e2f2f0';
 }
 setTheme(savedTheme ? savedTheme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
 themeButton.addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme !== 'dark';
   setTheme(dark);
+  const selected=document.querySelector('[name=appearance][value='+ (dark?'dark':'light') +']');if(selected)selected.checked=true;
   try { localStorage.setItem('jobscopes-theme', dark ? 'dark' : 'light'); } catch {}
 });
 const main = $('#main'), dialog = $('#editor'), form = $('#editor-form');
@@ -141,10 +143,22 @@ function discoveryForm(id) {
       toast(id ? 'Discovery updated.' : 'Discovery logged.');
     });
 }
+
+function settingsNavigation() {
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/appearance','Appearance'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+}
+function appearanceView() {
+  const dark=document.documentElement.dataset.theme==='dark';
+  main.innerHTML=`<section class="page-heading"><div><div class="eyebrow">Workspace settings</div><h1>Appearance</h1><p>Choose a comfortable display for the office or jobsite.</p></div></section><section class="panel appearance-panel"><h2>Color mode</h2><p class="notice">Teal accents in both modes. Your choice is saved in this browser.</p><label><input type="radio" name="appearance" value="light" ${!dark?'checked':''}> Light — bright surfaces and dark text</label><label><input type="radio" name="appearance" value="dark" ${dark?'checked':''}> Dark — low-light surfaces and teal accents</label></section>`;
+  main.querySelectorAll('[name=appearance]').forEach(input=>input.onchange=()=>{setTheme(input.value==='dark');try{localStorage.setItem('jobscopes-theme',input.value);}catch{}});
+}
+
 async function load() {
+  if (location.hash === '#team') history.replaceState(null,'','#settings');
+  if (location.hash === '#security') history.replaceState(null,'','#settings/security');
   const ticket = ++loadId; const match = location.hash.match(/^#project\/([\w-]+)$/);
   document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    const selected = link.getAttribute('href') === (['#company','#statistics','#security','#team'].includes(location.hash) ? location.hash : '#');
+    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : ['#company','#statistics'].includes(location.hash) ? location.hash : '#');
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (dialog.open) dialog.close();
@@ -152,8 +166,14 @@ async function load() {
   try {
     if (!await account.check()) return;
     if (ticket !== loadId) return;
-    if (location.hash === '#team') { main.onclick=null; current=null; $('#breadcrumb').textContent='Company & team'; await account.mount(); }
-    else if (location.hash === '#security') { main.onclick=null; current=null; $('#breadcrumb').textContent='Security'; await security.mount(main); }
+    if (location.hash.startsWith('#settings')) {
+      main.onclick=null;current=null;$('#breadcrumb').textContent='Settings';
+      if(location.hash==='#settings/security') await security.mount(main);
+      else if(location.hash==='#settings/appearance') appearanceView();
+      else await account.mount();
+      if(ticket!==loadId)return;
+      main.insertAdjacentHTML('afterbegin',settingsNavigation());
+    }
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Statistics' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }
     else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; $('#breadcrumb').textContent = 'Projects'; dashboard(); }

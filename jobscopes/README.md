@@ -23,7 +23,7 @@ The original app at port 3100 is separate. Its customer records/photos were inte
 - Account registration and sign-in, server-side sessions, sign-out and expiry.
 - Company creation and switching, including multiple companies per person.
 - Owner, Manager and Viewer office roles. Permissions are enforced on the server.
-- Owners create email-bound invitation codes. Codes last 48 hours and work once. Share them yourself; no email is sent by the app. An invitee first creates an account/company, then uses **Company & team → Accept an invitation** and switches to the invited company.
+- Owners create email-bound invitation codes. Codes last 48 hours and work once. Share them yourself; no email is sent by the app. An invitee first creates an account/company, then uses **Settings → Company & team → Accept an invitation** and switches to the invited company.
 - Owners can change Manager/Viewer access or remove a membership. Changes invalidate sessions for that membership immediately; removal also invalidates outstanding invitations for that email/company.
 - Each company has isolated projects, photos, discoveries, materials/estimates, cash records and statistics. The gateway derives the company from the session, not a query parameter/header/body.
 - Owners alone can export the selected company's encrypted backup. It is a workspace snapshot, not an accounts-system backup.
@@ -62,3 +62,9 @@ See ARCHITECTURE.md and RELEASE_GATES.md for the next steps and budget constrain
 ### Marketing-site checks
 
 The existing TypeScript check and Vite production build pass. The existing four website tests fail because they still expect KaiAI branding, old consulting prices and a Data Security link while the current homepage markets AgentOS. The website source and those tests were not changed. The Vitest configuration now limits discovery to src so it does not accidentally run the separate Node integration suite. This pre-existing website test debt remains before a marketing refresh.
+
+## Navigation and financial language update
+
+Company now shows a company-wide project register, status totals and financial activity. Statistics contains the bar and pie charts; Company has a View charts link. Empty charts display clearly labeled no-data states, not invented transactions. Financial actions use Record transaction, Cash receipts, Cash disbursements, Net cash flow, Expense breakdown and Transaction ledger.
+
+Settings groups Company & team, Appearance, and Security & backups. The top-right Dark mode button shows its current state; Appearance provides the same saved preference. Old #team and #security links redirect to their Settings sections. Browser checks covered navigation, security access, old links, empty charts, theme persistence and the 390px layout without horizontal page overflow or console errors.
