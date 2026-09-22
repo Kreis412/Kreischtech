@@ -247,3 +247,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .measurement-canvas { display:block; width:100%; height:auto; margin:16px 0; cursor:crosshair; border:2px solid var(--line); }
 .measurement-canvas:focus {outline:3px solid var(--green);outline-offset:3px;}
 #measurement-editor { margin-top:24px; }
+
+.photo-viewer{width:min(1100px,94vw);max-width:94vw;max-height:94vh;overflow:auto;padding:16px;background:var(--paper);color:var(--ink)}.photo-viewer img{display:block;max-width:100%;height:auto;margin:auto}.photo-viewer button{position:sticky;top:0}

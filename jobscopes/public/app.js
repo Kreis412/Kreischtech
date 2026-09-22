@@ -218,3 +218,13 @@ main.addEventListener('keydown', e => {
 window.addEventListener('hashchange', () => { tab = 'operations'; load(); window.scrollTo(0, 0); });
 window.addEventListener('offline', () => toast('You’re offline. Reconnect before saving changes.', true));
 load();
+
+// Keep photo viewing inside the authenticated app rather than a raw-image tab.
+document.addEventListener('click',e=>{
+ const link=e.target.closest('a[href^="/api/photos/"]');if(!link)return;
+ e.preventDefault();const viewer=document.createElement('dialog');viewer.className='photo-viewer';
+ const close=document.createElement('button');close.type='button';close.textContent='Close photo';close.onclick=()=>viewer.close();
+ const image=document.createElement('img');image.alt=link.querySelector('img')?.alt||'Project photo';image.src=link.getAttribute('href');
+ const message=document.createElement('p');message.textContent='Loading photo…';message.setAttribute('role','status');image.onload=()=>message.textContent='';image.onerror=()=>message.textContent='Photo could not load. Close this view and refresh the project, then try again.';
+ viewer.append(close,message,image);document.body.append(viewer);viewer.addEventListener('close',()=>viewer.remove());viewer.showModal();
+});

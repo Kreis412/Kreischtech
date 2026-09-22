@@ -51,11 +51,12 @@ export function operationsStore(db,estimates) {
       let expense=0,excludedLabor=0;const categories={};
       for(const e of ledger){const amount=e.amount_cents*(e.type==='Supplier refund'?-1:1);if(e.category==='Labor')excludedLabor+=amount;else {expense+=amount;categories[e.category]=(categories[e.category]||0)+amount;}}
       const approved=time.filter(t=>t.status==='Approved');const labor=approved.reduce((n,t)=>n+t.cost_cents,0);
-      const estimate=estimates.state(pid),snapshot=estimate.snapshots[0];
+      const estimate=estimates.state(pid),snapshot=estimate.snapshots[0],budget=rows(pid,'budget')[0]||null;
+      const baseline=budget?.amount_cents!=null?{label:'Project cost estimate',cents:budget.amount_cents,gaps:0}:snapshot?{label:snapshot.label,cents:snapshot.total_cents,gaps:snapshot.flag_count}:null;
       cost={labor_cents:labor,expense_cents:expense,total_cents:labor+expense,excluded_labor_payments_cents:excludedLabor,
         categories,approved_minutes:approved.reduce((n,t)=>n+t.minutes,0),pending_minutes:time.filter(t=>t.status==='Pending').reduce((n,t)=>n+t.minutes,0),
-        baseline:snapshot?{label:snapshot.label,cents:snapshot.total_cents,gaps:snapshot.flag_count}:null,
-        remaining_cents:snapshot?snapshot.total_cents-labor-expense:null};
+        budget,baseline,
+        remaining_cents:baseline?baseline.cents-labor-expense:null};
     }
     return {today:today(),findings,tasks,assignments,crew:crewSafe(crew,costs),time:costs?time:time.map(({rate_cents,burden_bp,cost_cents,...entry})=>entry),reports,setup,cost,
       summary:{decision_reviews_due:decisionDue.length,schedule,overdue:overdue.length,blocked:blocked.length,stale_report:stale,last_report:lastReport?.date||null,open_tasks:open.length,unreviewed:findings.filter(f=>['Needs review','Specialist needed'].includes(f.status)).length},
@@ -66,7 +67,7 @@ export function operationsStore(db,estimates) {
     if(await decisions.handle(req,url,project,json,send))return true;
     const costs=['Owner','Manager'].includes(actor.role);
     const crewMatch=url.pathname.match(/^\/api\/operations\/crew(?:\/([\w-]+))?$/);
-    const match=url.pathname.match(/^\/api\/projects\/([\w-]+)\/operations(?:\/(findings|tasks|assignments|time|reports|setup)(?:\/([\w-]+))?)?$/);
+    const match=url.pathname.match(/^\/api\/projects\/([\w-]+)\/operations(?:\/(findings|tasks|assignments|time|reports|setup|budget)(?:\/([\w-]+))?)?$/);
     if(url.pathname==='/api/operations/portfolio'&&req.method==='GET'){send(200,db.prepare('SELECT id,name,status FROM projects').all().map(p=>({...p,...state(p.id,costs)})));return true;}
     if(!match&&!crewMatch)return false;
     const pid=match?.[1]||null,kind=crewMatch?'crew':match[2],id=crewMatch?.[1]||match?.[3];if(pid)project(pid);
@@ -75,6 +76,10 @@ export function operationsStore(db,estimates) {
     if(!['POST','PUT'].includes(req.method)||!kind||(req.method==='PUT')!==Boolean(id))fail(405,'Method not allowed.');
     const b=await json(req),old=id?get(pid,kind,id):null;let content;
     if(old&&Number(b.revision)!==old.revision)fail(409,'This record changed. Refresh and try again.');
+    if(kind==='budget'){
+      if(!id&&rows(pid,kind).length)fail(409,'A cost estimate already exists. Refresh and edit it.');
+      content={amount_cents:b.amount===''||b.amount==null?null:decimal(b.amount,1000000000,'estimated project cost'),notes:str(b.notes||'','estimate assumptions',2000),updated_by:actor.name};
+    }
     if(kind==='crew')content={name:str(b.name,'worker name',120,true),trade:str(b.trade||'','trade',120),rate_cents:decimal(b.rate,100000,'hourly cost rate'),burden_bp:decimal(b.burden||'0',100,'labor burden percentage'),active:choice(b.active,['Active','Inactive'])};
     if(kind==='assignments'){
       get(null,'crew',b.crew_id);if(old&&old.crew_id!==b.crew_id)fail(400,'A project assignment cannot be transferred to another worker.');if(rows(pid,kind).some(a=>a.crew_id===b.crew_id&&a.id!==id))fail(409,'This worker is already assigned.');

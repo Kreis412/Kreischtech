@@ -14,6 +14,16 @@ test('connected operations: review, crews, approval, costs, isolation and persis
  const a=client(),b=client(),v=client();for(const [c,n] of [[a,'owner'],[b,'other'],[v,'viewer']])await c.req('/api/account/register','POST',{name:n,email:n+'@example.test',password:'test-only long password 2026',company:n},201);
  const p=await a.req('/api/projects','POST',{name:'Music room',type:'Basement',status:'Planning'},201),q=await a.req('/api/projects','POST',{name:'Second job',type:'Basement',status:'Planning'},201),root=`/api/projects/${p.id}/operations`;
  let finding,worker,entry,task;
+ await t.test('project cost estimate validates currency, persists, and respects project scope',async()=>{
+ await a.req(root+'/budget','POST',{amount:'-1'},400);
+ let budget=await a.req(root+'/budget','POST',{amount:'25000.50',notes:'Labor and materials'},201);
+ assert.equal((await a.req(root)).cost.baseline.cents,2500050);
+ await b.req(root+'/budget/'+budget.id,'PUT',{...budget,amount:'5'},404);
+ await a.req(root+'/budget/'+budget.id,'PUT',{revision:0,amount:'5'},409);
+ await stop();await start();assert.equal((await a.req(root)).cost.remaining_cents,2500050);
+ budget=await a.req(root+'/budget/'+budget.id,'PUT',{...budget,amount:''});
+ assert.equal((await a.req(root)).cost.baseline,null);
+ });
  await t.test('review is required before scope becomes assigned work',async()=>{
  finding=await a.req(root+'/findings','POST',{title:'Duct clearance',observation:'Low duct',status:'Needs review'},201);
  const work={title:'Verify clearance',kind:'Task',status:'Planned',finding_id:finding.id};
