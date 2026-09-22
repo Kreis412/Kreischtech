@@ -23,3 +23,7 @@ Sources checked:
 ## Equipment & Fleet milestone
 
 Dedicated inventory page: create/edit/retire, unique tags, optional vehicle details, project assignment, responsible person, manually entered location and meter readings, next-service date/reading, registration reminders, permanent service history and optional costs. Owner/Manager writes; Viewer reads with structured service costs redacted. Service cost is a reference, not an automatic ledger expense. No GPS, telematics, recurring service calculation, stock quantities, or attachment uploads yet. Meter corrections and service-entry corrections need a future audited workflow.
+
+## Scoped follow-up
+
+Four new representative images were tested with explicit addition, patio, music-room and bathroom scopes. Latency 9.22–14.33 seconds. Eight total requests used 17,037 input and 2,226 output tokens (estimated $0.28167 at standard rates). These results remain a small manual trial, not an accuracy claim. Private detailed report: data/site-review-2026-09-22.md. Not inserted into real projects. Local cloud-pilot.json now records the user-authorized ten-attempt maximum ($10 conservative reservations); default remains five when no authorization file exists. Product gaps: multi-photo consolidation, fuller scope-driven unknowns, panel identification specificity and more calibrated specialist referrals.
