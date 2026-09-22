@@ -29,3 +29,10 @@ test('invalid generation leaves no partial records and releases the analysis loc
  const run=()=>store.handle({method:'POST',jobscopesActor:{name:'Owner',role:'Owner'}},new URL('http://localhost/api/projects/a/analysis'),()=>{},async()=>({photo_id:'photo'}),()=>{});
  await assert.rejects(run(),e=>e.status===502);assert.equal(db.prepare('SELECT count(*) n FROM photo_analyses').get().n,0);assert.equal(db.prepare('SELECT count(*) n FROM operations_records').get().n,0);valid=true;await run();assert.equal(db.prepare('SELECT count(*) n FROM photo_analyses').get().n,1);db.close();
 });
+
+test('cloud selection requires consent and saves model provenance with retry deduplication',async()=>{
+ const db=new DatabaseSync(':memory:');db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES('a');CREATE TABLE photos(id TEXT PRIMARY KEY,project_id TEXT,content BLOB);INSERT INTO photos VALUES('photo','a',X'0102');CREATE TABLE operations_records(id TEXT PRIMARY KEY,project_id TEXT,kind TEXT,data TEXT,revision INTEGER,created_at TEXT,updated_at TEXT);`);
+ let calls=0;const store=analysisStore(db,{cloud:{status:()=>({remaining_attempts:1}),analyze:async()=>{calls++;return result;}}});
+ const run=async b=>{let reply;await store.handle({method:'POST',jobscopesActor:{name:'Owner',role:'Owner'}},new URL('http://localhost/api/projects/a/analysis'),()=>{},async()=>b,(status,value)=>reply=value);return reply;};
+ try{await assert.rejects(run({photo_id:'photo',provider:'openai'}),e=>e.status===400);assert.equal(calls,0);const b={photo_id:'photo',provider:'openai',cloud_consent:true};await run(b);assert.equal((await run(b)).reused,true);assert.equal(calls,1);const f=JSON.parse(db.prepare('SELECT data FROM operations_records').get().data);assert.equal(f.source,'Cloud AI draft');assert.equal(f.model,'gpt-6-astra');assert.equal(f.status,'Needs review');}finally{db.close();}
+});

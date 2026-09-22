@@ -1,3 +1,4 @@
+import { equipmentStore } from './equipment.mjs';
 import { joeStore } from './joe.mjs';
 import { analysisStore } from './analysis.mjs';
 import { operationsStore } from './operations.mjs';
@@ -40,7 +41,7 @@ function imageType(bytes) {
   fail(415, 'Choose a JPEG, PNG, or WebP photo. Export HEIC photos as JPEG first.');
 }
 
-export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data') } = {}) {
+export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null } = {}) {
   mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(join(dataDir, 'contractoros.sqlite'));
   db.exec(`PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -59,8 +60,9 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
     `);
   const estimates = materialsStore(db);
   const company = companyStore(db, estimates);
+  const equipment = equipmentStore(db);
   const operations = operationsStore(db, estimates);
-  const analysis = analysisStore(db);
+  const analysis = analysisStore(db,{cloud});
   const joe = joeStore(db);
   let backupRunning = false;
   const project = id => db.prepare('SELECT * FROM projects WHERE id = ?').get(id) || fail(404, 'Project not found.');
@@ -90,6 +92,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
       }
       if (await joe.handle(req,url,project,json,send)) return;
       if (await analysis.handle(req, url, project, json, send)) return;
+      if (await equipment.handle(req, url, project, json, send)) return;
       if (await operations.handle(req, url, project, json, send)) return;
       if (await company.handle(req, url, json, send)) return;
       if (await estimates.handle(req, path, project, json, send)) return;

@@ -21,3 +21,5 @@ Baseline: 45 automated checks pass. Startup: `node server.mjs` or START_JOBSCOPE
 7. Pilot readiness: acceptance tests with solo and multi-team samples, accessibility/speed, permission changes and isolation, error recovery, operating/support documentation. Public pricing and customer onboarding remain unbuilt.
 
 Bank linking, billing, customer-facing chat, production-validated AI, resource forecasting and public release remain future work. Keep all existing human-review controls when changing AI providers.
+
+September 22 update: Astra cloud photo pilot is connected and three corrected sample scenes passed a manual smoke review. See ASTRA_PILOT.md. Broader blinded evaluation, hosted credential handling, per-company billing quotas, resilient jobs and provider retention disclosures remain release gates. Equipment & Fleet inventory and manual maintenance tracking are implemented; GPS integration is not included.
