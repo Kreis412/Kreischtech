@@ -29,7 +29,7 @@ export async function analyzeLocal(image,context='',request=fetch){
   return validateResult(parsed);
  }catch(e){if(e.status)throw e;if(e.name==='TimeoutError'||e.name==='AbortError')fail(504,'Local analysis timed out. No findings were saved. Try a smaller photo.');fail(503,'Cannot reach local Ollama. Start Ollama and try again.');}
 }
-export function analysisStore(db,{analyze=analyzeLocal,cloud=null}={}){
+export function analysisStore(db,{analyze=analyzeLocal,cloud=null,measurements=null}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS photo_analyses(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),photo_id TEXT NOT NULL REFERENCES photos(id),model TEXT NOT NULL,summary TEXT NOT NULL,created_at TEXT NOT NULL,actor TEXT NOT NULL,context TEXT NOT NULL,UNIQUE(project_id,photo_id,model));`);
  return {async handle(req,url,project,json,send){
   const m=url.pathname.match(/^\/api\/projects\/([\w-]+)\/analysis$/);if(!m)return false;
@@ -42,13 +42,16 @@ export function analysisStore(db,{analyze=analyzeLocal,cloud=null}={}){
   if(typeof (b.context||'')!=='string'||(b.context||'').length>2000)fail(400,'Context must be at most 2000 characters.');
   const previous=db.prepare('SELECT * FROM photo_analyses WHERE project_id=? AND photo_id=? AND model=?').get(pid,photo.id,model);
   if(previous){send(200,{...previous,reused:true});return true;}
+  const labels=measurements?.context(photo.id)||'';
+  const context=(b.context||'')+(labels?'\nUser-provided landmark measurements (not inferred scale; do not extrapolate to other depths):\n'+labels:'');
+  if(context.length>2000)fail(400,'Context plus measurement labels is too long. Shorten the context or labels to fit 2,000 characters.');
   const release=acquireLocalModel();
   try{
-   const result=validateResult((useCloud?await cloud.analyze(Buffer.from(photo.content),b.context||'',REVIEW_PROMPT,schema):await analyze(Buffer.from(photo.content),b.context||'')));
+   const result=validateResult((useCloud?await cloud.analyze(Buffer.from(photo.content),context,REVIEW_PROMPT,schema):await analyze(Buffer.from(photo.content),context)));
    const id=randomUUID(),now=new Date().toISOString(),actor=req.jobscopesActor?.name||'Local operator';
    db.exec('BEGIN IMMEDIATE');
    try{
-    db.prepare('INSERT INTO photo_analyses VALUES(?,?,?,?,?,?,?,?)').run(id,pid,photo.id,model,result.summary,now,actor,b.context||'');
+    db.prepare('INSERT INTO photo_analyses VALUES(?,?,?,?,?,?,?,?)').run(id,pid,photo.id,model,result.summary,now,actor,context);
     for(const f of result.findings){const content={...f,location:'',photo_id:photo.id,status:'Needs review',review_notes:'',reviewed_by:null,reviewed_at:null,source:useCloud?'Cloud AI draft':'Local AI draft',model,analysis_id:id};db.prepare('INSERT INTO operations_records VALUES(?,?,?,?,1,?,?)').run(randomUUID(),pid,'findings',JSON.stringify(content),now,now);}
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
