@@ -11,7 +11,7 @@ Source: Kreis412/Kreischtech, default branch master, described as AI Consulting 
 - Identity/access: `accounts.mjs`, a dedicated accounts database containing users, companies, memberships, hashed sessions/invitations, throttling and limited access-event history.
 - Workspace domain: `workspace.mjs`, materials and company modules. Private workspace instances are keyed only by company UUID resolved from the account session. Clients cannot choose a storage path.
 - Company storage: `data/companies/<server-generated-company-id>/contractoros.sqlite`. Separating databases prevents accidental missing company filters in existing domain queries. Records and photo bytes remain transactional within a company.
-- Browser: existing responsive teal UI, now with account and team screens. No privileged token is stored in localStorage; localStorage is used for appearance only.
+- Browser: existing responsive teal UI, now with account and team screens. No privileged token is stored in localStorage; localStorage is used for appearance and optional assistant-reminder preferences only.
 
 ## Security decisions
 
@@ -39,3 +39,6 @@ Production-validated image interpretation, payroll, time-clock capture, task dep
 
 ### Experimental local image analysis
 `analysis.mjs` calls fixed localhost Ollama using `gemma3:4b`. It stores per-photo run metadata in `photo_analyses` and atomically creates unreviewed operations findings. Source/model/run provenance survives human edits. No model output can directly create tasks, approve findings or alter estimates. The provider receives only selected image bytes and explicitly entered context; all model strings are escaped in the UI. Results are deduplicated by project/photo/model. This prototype has no rerun/version-selection UI, no cloud fallback, and no quality certification. Real-image observations in README document substantial quality limitations.
+
+### Joe and documented decisions
+`joe.mjs` stores user-separated chat exchanges per company and optionally supplies bounded project context. A shared local-model lock limits concurrent photo/chat inference; completed requests unload the model. Suggestions are opt-in browser reminders, with no background inference. Draft notes require explicit human editing/saving through existing project authorization and revision checks. `decisions.mjs` preserves finding/decision snapshots and invalidates prior decisions after finding revisions; history is append-only in the app/database, not tamper-proof against a filesystem administrator.
