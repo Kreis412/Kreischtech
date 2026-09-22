@@ -1,4 +1,4 @@
-# JobScopes — company foundation preview
+# ContractorSight — company foundation preview
 
 This product lives separately from KreischTech's existing React marketing site. It reuses the tested local project/photo/discovery/estimate/statistics UI and storage modules, with an authenticated company gateway in front. The live site and the original ContractorOS data have not been changed.
 
@@ -14,7 +14,7 @@ node server.mjs
 
 Open http://localhost:3200. Choose **Create a company account**, enter your own email, name, company and a password of at least 16 characters. This is a local preview; email addresses are not verified and no messages are sent. Password recovery is not yet available. Do not reuse a password from another service.
 
-Alternatively, double-click START_JOBSCOPES.bat. Keep its window open. Stop with Ctrl+C. Data survives restarts in the ignored `data` directory.
+Alternatively, double-click START_CONTRACTORSIGHT.bat (the original START_JOBSCOPES.bat also works). Keep its window open. Stop with Ctrl+C. Data survives restarts in the ignored `data` directory.
 
 The original app at port 3100 is separate. Its customer records/photos were intentionally not copied into this public repository or this new preview. A reviewed import is a later task.
 
@@ -135,3 +135,8 @@ See ASTRA_PILOT.md for measured sample results, estimated spend, known limits an
 Open a project > Site photos > Measurements below a photo. Choose Add measurement line, tap two endpoints, then enter starting/ending landmarks and a distance including units (for example, House corner to marker: 20 ft). Choose Measured, Approximate, or Proposed and save. Up to eight lines per photo can be edited or removed; the original image stays unchanged. Keyboard users can move the marker with arrows (Shift for larger steps) and select points with Enter.
 
 Labels are saved with the photo and supplied as user-provided context for new photo analyses and project-context Joe conversations (the four most recent photos, with bounded context). They do not establish a general image scale or automatically calculate other distances. Existing saved analyses are reused and are not automatically rerun when labels change. Concurrent edits are rejected instead of overwriting another user's changes; reopen the editor to load the current version.
+
+## Latest local update
+ContractorSight by KreischTech is the working product name. Existing accounts, project records, photos and preferences are preserved. Under Project workspace > Job costs, choose Estimated project cost to enter expected internal costs before markup; recorded labor and expenses are compared against that amount. Clearing it falls back to the latest detailed estimate snapshot. Photo links now open a closeable in-app viewer with loading/error feedback.
+
+Verified locally: 51 automated checks; browser save/reload of an estimated cost and the resulting remaining balance; photo viewer rendering; saved measurement overlays. Public hosting, dependable phone synchronization, broader AI accuracy evaluation and customer-ready quote/change-order workflow remain unfinished. See RELEASE_GATES.md.

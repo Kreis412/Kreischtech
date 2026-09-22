@@ -52,7 +52,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data')}=
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.includes('--lan')){console.error('This preview requires localhost. Hosted HTTPS access is not configured.');process.exit(1);}
   const server=createProduct(),port=Number(process.env.PORT||3200);
-  server.listen(port,'127.0.0.1',()=>console.log(`JobScopes company preview: http://localhost:${port}`));
+  server.listen(port,'127.0.0.1',()=>console.log(`ContractorSight company preview: http://localhost:${port}`));
   server.on('error',e=>{console.error(e.message);process.exitCode=1;server.close();});
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{server.close();server.closeIdleConnections();});
 }

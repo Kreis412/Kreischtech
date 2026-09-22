@@ -2,7 +2,7 @@
 
 ## Repository findings
 
-Source: Kreis412/Kreischtech, default branch master, described as AI Consulting Website. The existing product landing page markets AgentOS. React + TypeScript + Vite, static Vercel deployment. There was no JobScopes application backend in this repository. This work is on local branch `jobscopes/company-foundation`; it does not replace the website or Vercel configuration.
+Source: Kreis412/Kreischtech, default branch master, described as AI Consulting Website. The existing product landing page markets AgentOS. React + TypeScript + Vite, static Vercel deployment. There was no ContractorSight application backend in this repository. This work is on local branch `jobscopes/company-foundation`; it does not replace the website or Vercel configuration.
 
 ## Layers
 

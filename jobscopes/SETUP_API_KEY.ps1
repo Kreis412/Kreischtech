@@ -14,7 +14,7 @@ if ($SelfTest) {
 }
 $privateDirectory = Join-Path $PSScriptRoot 'data'
 $secretPath = Join-Path $privateDirectory 'openai-key.dpapi'
-Write-Host 'JobScopes API key setup'
+Write-Host 'ContractorSight API key setup'
 Write-Host 'Paste your OpenAI key below. It will be hidden and encrypted for this Windows account.'
 $apiSecret = Read-Host 'OpenAI API key' -AsSecureString
 $pointer = [IntPtr]::Zero

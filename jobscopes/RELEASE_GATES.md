@@ -9,7 +9,7 @@
 - Ask Joe: experimental local text assistance, optional context, reviewed scope-note updates, opt-in lightweight reminders. No background inference.
 - Experimental local photo analysis. Its three-scene accuracy trial FAILED the customer-release quality bar; software integration tests are not evidence of visual accuracy.
 
-Baseline: 45 automated checks pass. Startup: `node server.mjs` or START_JOBSCOPES.bat, http://localhost:3200. No public deployment, services purchased or cloud AI integration performed.
+Baseline: 51 automated checks pass. Startup: `node server.mjs` or START_CONTRACTORSIGHT.bat, http://localhost:3200. No public deployment or hosting purchased. Opt-in Astra cloud photo analysis is connected for the limited local pilot.
 
 ## Outstanding private-beta gates
 1. Site analysis quality: structured capture of intended scope/work stage, source-labeled facts and measurements, photo coverage, missing-evidence prompts; compare candidate models on unchanged cases and separately validate held-out residential/commercial cases. No claim of buildability or safety certification.
@@ -23,3 +23,5 @@ Baseline: 45 automated checks pass. Startup: `node server.mjs` or START_JOBSCOPE
 Bank linking, billing, customer-facing chat, production-validated AI, resource forecasting and public release remain future work. Keep all existing human-review controls when changing AI providers.
 
 September 22 update: Astra cloud photo pilot is connected and three corrected sample scenes passed a manual smoke review. See ASTRA_PILOT.md. Broader blinded evaluation, hosted credential handling, per-company billing quotas, resilient jobs and provider retention disclosures remain release gates. Equipment & Fleet inventory and manual maintenance tracking are implemented; GPS integration is not included.
+
+September 22 local completion update: ContractorSight branding adopted as a working name; trademark/domain clearance remains unverified. Photo landmark measurement overlays persist with revision checks. Internal project cost estimates compare against recorded labor and expenses. Photos open in an in-app viewer with loading/error feedback. Existing accounts, data paths, preferences and backup formats retain their identifiers for compatibility.

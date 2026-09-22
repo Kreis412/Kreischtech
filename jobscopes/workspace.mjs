@@ -88,7 +88,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
         try {
           const b = await json(req);
           const encrypted = await exportBackup(db, resolve(dataDir), b.password);
-          res.setHeader('Content-Disposition', 'attachment; filename="JobScopes-backup.jobscopes"');
+          res.setHeader('Content-Disposition', 'attachment; filename="ContractorSight-backup.jobscopes"');
           return send(200, encrypted, 'application/octet-stream');
         } finally { backupRunning = false; }
       }

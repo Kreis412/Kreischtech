@@ -37,7 +37,7 @@ let projects = [], current = null, tab = 'operations', loadId = 0, toastTimer;
 let filters = { query: '', status: '', type: '' };
 async function api(path, opts = {}) {
   let response;
-  try { response = await fetch(path, opts); } catch { throw new Error('Cannot reach your workspace. Check the connection and keep JobScopes running on your computer.'); }
+  try { response = await fetch(path, opts); } catch { throw new Error('Cannot reach your workspace. Check the connection and keep ContractorSight running on your computer.'); }
   const value = await response.json();
   if (!response.ok) throw new Error(value.error || 'Something went wrong. Please try again.');
   return value;

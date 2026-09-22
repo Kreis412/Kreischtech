@@ -23,7 +23,7 @@ export async function encryptBackup(bytes, password) {
 }
 export async function decryptBackup(bytes,password) {
   checkPassword(password);
-  if(bytes.length<69 || !bytes.subarray(0,9).equals(MAGIC)) throw new Error('Unsupported or damaged JobScopes backup.');
+  if(bytes.length<69 || !bytes.subarray(0,9).equals(MAGIC)) throw new Error('Unsupported or damaged ContractorSight backup.');
   const key=await derive(password,bytes.subarray(9,25),32,options);
   try {
     const decipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(25,37),{authTagLength:16});
