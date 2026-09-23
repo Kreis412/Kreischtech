@@ -1,0 +1,20 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {backupInstallation,restoreInstallation} from '../installation-backup.mjs';
+test('full encrypted offline archive retains account, company, photo and AI quota files',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'cs-recovery-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const source=join(root,'source');mkdirSync(join(source,'companies','sample'),{recursive:true});
+ const files={'accounts.sqlite':'account fixture','companies/sample/contractoros.sqlite':'project and photo fixture','ai-pilot.sqlite':'quota fixture'};
+ for(const [name,data]of Object.entries(files))writeFileSync(join(source,name),data);
+ const archive=join(root,'backup.enc'),password='test-only recovery passphrase';
+ assert.equal(await backupInstallation(source,archive,password),3);
+ await assert.rejects(()=>restoreInstallation(archive,join(root,'wrong'),'wrong password sixteen characters'));
+ assert.equal(existsSync(join(root,'wrong')),false);
+ assert.equal(await restoreInstallation(archive,join(root,'restored'),password),3);
+ for(const [name,data]of Object.entries(files))assert.equal(readFileSync(join(root,'restored',name),'utf8'),data);
+ await assert.rejects(()=>restoreInstallation(archive,source,password));
+ await assert.rejects(()=>backupInstallation(source,archive,password));
+});

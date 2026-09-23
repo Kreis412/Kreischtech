@@ -15,12 +15,12 @@ export function helper(name,input='',args=[]) {return new Promise((resolve,rejec
 });}
 // Global to the local installation: reservations survive restart and include failed/uncertain requests.
 // Five $1 reservations are a deliberately conservative pilot allowance, not customer billing credits.
-export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,unlock=()=>helper('read-api-key.ps1','',[join(dataDir,'openai-key.dpapi')]),prepare=image=>helper('prepare-photo.ps1',image.toString('base64'))}={}){
+export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempts=null,unlock=()=>helper('read-api-key.ps1','',[join(dataDir,'openai-key.dpapi')]),prepare=image=>helper('prepare-photo.ps1',image.toString('base64'))}={}){
  mkdirSync(dataDir,{recursive:true});const ledger=new DatabaseSync(join(dataDir,'ai-pilot.sqlite'));
  ledger.exec('PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS attempts(id INTEGER PRIMARY KEY,status TEXT NOT NULL,usage TEXT,created_at TEXT NOT NULL);');
  const configPath=join(dataDir,'cloud-pilot.json');
  const config=existsSync(configPath)?JSON.parse(readFileSync(configPath,'utf8')):{max_attempts:5};
- const limit=config.max_attempts;if(!Number.isInteger(limit)||limit<1||limit>10)throw new Error('Invalid local pilot limit.');
+ const limit=maxAttempts??config.max_attempts;if(!Number.isInteger(limit)||limit<0||limit>10)throw new Error('Invalid local pilot limit.');
  const status=()=>({reserved_usd:ledger.prepare('SELECT count(*) n FROM attempts').get().n,limit_usd:limit,remaining_attempts:Math.max(0,limit-ledger.prepare('SELECT count(*) n FROM attempts').get().n)});
  async function analyze(image,context,prompt,schema){
   if(typeof context!=='string'||context.length>2000||image.length>15*1024*1024)fail(400,'Photo or context exceeds the pilot limit.');

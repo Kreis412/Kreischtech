@@ -1,3 +1,4 @@
+import { prepareHostedPhoto } from './hosted-photo.mjs';
 import { cloudAdapter } from './cloud-analysis.mjs';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -6,7 +7,7 @@ import { dirname,join,resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { accounts } from './accounts.mjs';
 import { createApp } from './workspace.mjs';
-import { guardLocalRequest } from './security.mjs';
+import { accessPolicy } from './access.mjs';
 const ROOT=dirname(fileURLToPath(import.meta.url));
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 async function json(req) {
@@ -16,16 +17,16 @@ async function json(req) {
   try{const b=JSON.parse(Buffer.concat(chunks));if(!b || typeof b!=='object' || Array.isArray(b)) fail(400,'Expected an object.');return b;}
   catch(e){if(e.status)throw e;fail(400,'Invalid JSON.');}
 }
-export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data')}={}) {
-  mkdirSync(dataDir,{recursive:true});const auth=accounts(dataDir),workspaces=new Map();const cloud=existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null;
+export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=''}={}) {
+  mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null}),workspaces=new Map();const cloud=policy.hosted?(process.env.OPENAI_API_KEY?cloudAdapter({dataDir,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:Number(process.env.AI_PILOT_MAX_ATTEMPTS||0)}):null):(existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null);
   const server=createServer(async(req,res)=>{
     const send=(status,value,type='application/json')=>{
       res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','Content-Security-Policy':"default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"});
       res.end(type==='application/json'?JSON.stringify(value):value);
     };
     try {
-      guardLocalRequest(req);
-      if(req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) fail(403,'Cross-origin requests are blocked.');
+      policy.guard(req);
+      if(!policy.hosted && req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) fail(403,'Cross-origin requests are blocked.');
       if(req.headers['sec-fetch-site']==='cross-site') fail(403,'Cross-site requests are blocked.');
       const url=new URL(req.url,'http://localhost');
       if(await auth.handle(req,url,json,send,res)) return;
@@ -35,12 +36,12 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data')}=
         if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);
       }
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
-      if(url.pathname==='/api/security' && req.method==='GET') return send(200,{access:'This computer only',authentication:true,storageEncrypted:false,encryptedBackups:session.role==='Owner'});
+      if(url.pathname==='/api/security' && req.method==='GET') return send(200,{access:policy.hosted?'Secure hosted workspace':'This computer only',authentication:true,storageEncrypted:false,encryptedBackups:session.role==='Owner'});
       if(url.pathname.startsWith('/api/security/') && session.role!=='Owner') fail(403,'Only the owner can export a company backup.');
       if(!['GET','HEAD'].includes(req.method) && session.role==='Viewer' && !(url.pathname==='/api/joe'&&req.method==='POST')) fail(403,'Viewer access is read-only. Ask your company owner to change your role.');
       // Company identity comes only from the authenticated session, never request data.
       let workspace=workspaces.get(session.company_id);
-      if(!workspace){workspace=createApp({dataDir:join(dataDir,'companies',session.company_id),cloud});workspaces.set(session.company_id,workspace);}
+      if(!workspace){workspace=createApp({dataDir:join(dataDir,'companies',session.company_id),cloud,requestGuard:policy.guard});workspaces.set(session.company_id,workspace);}
       req.jobscopesActor={id:session.user_id,name:session.name,role:session.role};
       workspace.emit('request',req,res);
     } catch(e){if(!res.headersSent)send(e.status||500,{error:e.status?e.message:'Request failed. Please try again.'});}
@@ -51,8 +52,9 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data')}=
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.includes('--lan')){console.error('This preview requires localhost. Hosted HTTPS access is not configured.');process.exit(1);}
-  const server=createProduct(),port=Number(process.env.PORT||3200);
-  server.listen(port,'127.0.0.1',()=>console.log(`ContractorSight company preview: http://localhost:${port}`));
+  const publicOrigin=process.env.PUBLIC_ORIGIN||'';
+  const server=createProduct({publicOrigin,registrationCode:process.env.PILOT_REGISTRATION_CODE||''}),port=Number(process.env.PORT||3200);
+  server.listen(port,publicOrigin?'0.0.0.0':'127.0.0.1',()=>console.log(`ContractorSight company preview: http://localhost:${port}`));
   server.on('error',e=>{console.error(e.message);process.exitCode=1;server.close();});
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{server.close();server.closeIdleConnections();});
 }

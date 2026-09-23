@@ -42,7 +42,7 @@ function imageType(bytes) {
   fail(415, 'Choose a JPEG, PNG, or WebP photo. Export HEIC photos as JPEG first.');
 }
 
-export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null } = {}) {
+export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null, requestGuard = guardLocalRequest } = {}) {
   mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(join(dataDir, 'contractoros.sqlite'));
   db.exec(`PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -78,7 +78,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
     };
     try {
       const url = new URL(req.url, 'http://localhost'); const path = url.pathname;
-      guardLocalRequest(req);
+      requestGuard(req);
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) fail(403, 'Cross-origin requests are not allowed.');
       if (req.headers['sec-fetch-site'] === 'cross-site') fail(403, 'Cross-site requests are not allowed.');
       if (req.method === 'GET' && path === '/api/security') return send(200, { access:'This computer only', authentication:false, storageEncrypted:false, encryptedBackups:true });

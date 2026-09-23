@@ -1,1 +1,1 @@
-{"name":"jobscopes-company-preview","private":true,"type":"module","engines":{"node":">=22.14"},"scripts":{"start":"node server.mjs","test":"node --test"}}
+{"name":"jobscopes-company-preview","private":true,"type":"module","engines":{"node":">=22.14"},"scripts":{"start":"node server.mjs","test":"node --test"},"dependencies":{"sharp":"0.35.4"}}

@@ -75,6 +75,7 @@ function renderCards() {
 function projectView() {
   const p = current;
   main.innerHTML = `<a class="back" href="#">← All projects</a><section class="page-heading"><div><div class="eyebrow">${esc(p.type)} / Project workspace</div><h1>${esc(p.name)}</h1><p>${esc(p.address || 'Add a jobsite address to get started.')}</p><div class="detail-meta">${badge(p.status)}<span>${esc(p.client || 'No client added')}</span></div></div><button data-action="edit-project">Edit project <span aria-hidden="true">↗</span></button></section>
+    <nav class="upload-actions" aria-label="Quick project actions"><button class="primary" data-action="quick-camera">Take photo</button><button data-action="new-discovery">Log observation</button><button data-action="edit-project">Update project status</button></nav>
     <div class="detail-layout"><section><div class="tabs" role="tablist" aria-label="Project details"><button id="discoveries-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'discoveries'}" data-action="discoveries">Discovery Log <span class="count">${p.discoveries.length}</span></button><button id="photos-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'photos'}" data-action="photos">Site photos <span class="count">${p.photos.length}</span></button></div><div id="tab-content" role="tabpanel" aria-labelledby="${tab}-tab"></div></section>
     <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT / HOMEOWNER</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Local photo analysis creates draft findings in Project workspace for human review.</p></section></aside></div>`;
   const tabs = main.querySelector('.tabs');
@@ -208,6 +209,7 @@ main.addEventListener('click', e => {
     case 'discoveries': tab = 'discoveries'; projectView(); $('#discoveries-tab').focus(); break;
     case 'photos': tab = 'photos'; projectView(); $('#photos-tab').focus(); break;
     case 'materials': tab = 'materials'; projectView(); $('#materials-tab').focus(); break;
+    case 'quick-camera': tab = 'photos'; projectView(); $('#camera-input').click(); break;
     case 'camera': $('#camera-input').click(); break;
     case 'upload': $('#photo-input').click(); break;
   }

@@ -10,7 +10,7 @@ const email=s=>typeof s==='string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.
 const password=s=>typeof s==='string' && s.length>=16 && s.length<=256 ? s : fail(400,'Use a password of 16–256 characters.');
 const kdf={N:32768,r:8,p:1,maxmem:64*1024*1024};
 const SESSION_MS=8*60*60*1000;
-export function accounts(dataDir) {
+export function accounts(dataDir,{secureCookies=false,registrationCode=null}={}) {
   const db=new DatabaseSync(join(dataDir,'accounts.sqlite'));
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,salt TEXT NOT NULL,password_hash TEXT NOT NULL);
@@ -43,7 +43,7 @@ export function accounts(dataDir) {
     db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(cookie(req)));
     const token=randomBytes(32).toString('base64url');
     db.prepare('INSERT INTO sessions VALUES(?,?,?,?)').run(hash(token),user,company,Date.now()+SESSION_MS);
-    res.setHeader('Set-Cookie',`jobscopes_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS/1000}`);
+    res.setHeader('Set-Cookie',`jobscopes_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS/1000}${secureCookies?'; Secure':''}`);
   }
   const requireOwner=s=>{if(s.role!=='Owner') fail(403,'Only the company owner can manage access.');};
   async function handle(req,url,json,send,res) {
@@ -54,6 +54,7 @@ export function accounts(dataDir) {
       limit('auth:'+req.socket.remoteAddress);
       const b=await json(req), mail=email(b.email), pass=password(b.password);
       if(path.endsWith('/register')) {
+        if(registrationCode!==null && (!registrationCode || typeof b.registration_code!=='string' || !timingSafeEqual(Buffer.from(hash(b.registration_code)),Buffer.from(hash(registrationCode))))) fail(403,'Registration requires a valid private pilot code.');
         const name=label(b.name), company=label(b.company);const salt=randomBytes(16).toString('hex');
         const key=await derive(pass,salt,32,kdf);
         const id=randomUUID(),companyId=randomUUID();
@@ -75,7 +76,7 @@ export function accounts(dataDir) {
     }
     const s=session(req);if(!s) fail(401,'Sign in to continue.');
     if(req.method==='POST' && path==='/api/account/logout') {
-      db.prepare('DELETE FROM sessions WHERE token_hash=?').run(s.token_hash);res.setHeader('Set-Cookie','jobscopes_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');send(200,{saved:true});return true;
+      db.prepare('DELETE FROM sessions WHERE token_hash=?').run(s.token_hash);res.setHeader('Set-Cookie',`jobscopes_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies?'; Secure':''}`);send(200,{saved:true});return true;
     }
     if(req.method==='POST' && path==='/api/account/switch') {
       const b=await json(req);if(!db.prepare('SELECT 1 FROM memberships WHERE user_id=? AND company_id=?').get(s.user_id,String(b.company_id))) fail(403,'No access to this company.');
