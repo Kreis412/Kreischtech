@@ -42,7 +42,7 @@ function imageType(bytes) {
   fail(415, 'Choose a JPEG, PNG, or WebP photo. Export HEIC photos as JPEG first.');
 }
 
-export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null, requestGuard = guardLocalRequest } = {}) {
+export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null, requestGuard = guardLocalRequest, joeOptions = {} } = {}) {
   mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(join(dataDir, 'contractoros.sqlite'));
   db.exec(`PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -65,7 +65,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
   const operations = operationsStore(db, estimates);
   const measurements = measurementStore(db);
   const analysis = analysisStore(db,{cloud,measurements});
-  const joe = joeStore(db,{measurements});
+  const joe = joeStore(db,{measurements,...joeOptions});
   let backupRunning = false;
   const project = id => db.prepare('SELECT * FROM projects WHERE id = ?').get(id) || fail(404, 'Project not found.');
   const photos = id => db.prepare('SELECT id, project_id, name, mime, created_at FROM photos WHERE project_id = ? ORDER BY created_at DESC').all(id);

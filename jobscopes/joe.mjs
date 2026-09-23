@@ -16,7 +16,7 @@ export async function askLocalJoe(messages,context,request=fetch){
   return answer.trim();
  }catch(e){if(e.status)throw e;if(['AbortError','TimeoutError'].includes(e.name))fail(504,'Joe timed out. Try a shorter question. Nothing was saved.');fail(503,'Cannot reach Ollama on this computer. Start Ollama and try again.');}finally{release();}
 }
-export function joeStore(db,{generate=askLocalJoe,measurements=null}={}){
+export function joeStore(db,{generate=askLocalJoe,measurements=null,model=MODEL,provider='Local Ollama'}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS joe_exchanges(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,project_id TEXT NOT NULL,question TEXT NOT NULL,answer TEXT NOT NULL,context_json TEXT NOT NULL,model TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(user_id,id));CREATE INDEX IF NOT EXISTS joe_user_project ON joe_exchanges(user_id,project_id,created_at);`);
  const history=(uid,pid)=>db.prepare('SELECT id,question,answer,model,created_at,context_json FROM joe_exchanges WHERE user_id=? AND project_id=? ORDER BY rowid DESC LIMIT 12').all(uid,pid).reverse().map(({context_json,...r})=>({...r,used_project_context:context_json!=='null'}));
  function context(pid){
@@ -27,7 +27,7 @@ export function joeStore(db,{generate=askLocalJoe,measurements=null}={}){
  return {async handle(req,url,project,json,send){
   if(url.pathname!=='/api/joe')return false;
   const actor=req.jobscopesActor;if(!actor?.id)fail(401,'Sign in to use Joe.');
-  if(req.method==='GET'){const pid=url.searchParams.get('project_id')||'';if(pid)project(pid);send(200,{model:MODEL,provider:'Local Ollama',history:history(actor.id,pid)});return true;}
+  if(req.method==='GET'){const pid=url.searchParams.get('project_id')||'';if(pid)project(pid);send(200,{model,provider,history:history(actor.id,pid)});return true;}
   if(req.method!=='POST')fail(405,'Method not allowed.');
   const b=await json(req);if(typeof b.question!=='string'||!b.question.trim()||b.question.length>3000)fail(400,'Enter a question of 1–3000 characters.');
   if(typeof b.request_id!=='string'||!/^[-\w]{10,80}$/.test(b.request_id))fail(400,'Invalid request identifier.');
@@ -39,8 +39,8 @@ export function joeStore(db,{generate=askLocalJoe,measurements=null}={}){
   const past=history(actor.id,pid).filter(r=>b.include_context||!r.used_project_context).slice(-3);
   const messages=past.flatMap(r=>[{role:'user',content:r.question.slice(0,3000)},{role:'assistant',content:r.answer.slice(0,4000)}]);messages.push({role:'user',content:b.question.trim()});
   const snapshot=pid&&b.include_context?context(pid):null;
-  const answer=await generate(messages,snapshot);
-  db.prepare('INSERT INTO joe_exchanges VALUES(?,?,?,?,?,?,?,?)').run(b.request_id,actor.id,pid,b.question.trim(),answer,JSON.stringify(snapshot),MODEL,new Date().toISOString());
+  const answer=await generate(messages,snapshot,actor.id+':'+b.request_id);
+  db.prepare('INSERT INTO joe_exchanges VALUES(?,?,?,?,?,?,?,?)').run(b.request_id,actor.id,pid,b.question.trim(),answer,JSON.stringify(snapshot),model,new Date().toISOString());
   send(201,{answer,reused:false,history:history(actor.id,pid)});return true;
  }};
 }

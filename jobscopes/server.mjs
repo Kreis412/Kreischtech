@@ -1,5 +1,5 @@
 import { prepareHostedPhoto } from './hosted-photo.mjs';
-import { cloudAdapter } from './cloud-analysis.mjs';
+import { cloudAdapter, CLOUD_MODEL } from './cloud-analysis.mjs';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { mkdirSync,readFileSync } from 'node:fs';
@@ -41,7 +41,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(!['GET','HEAD'].includes(req.method) && session.role==='Viewer' && !(url.pathname==='/api/joe'&&req.method==='POST')) fail(403,'Viewer access is read-only. Ask your company owner to change your role.');
       // Company identity comes only from the authenticated session, never request data.
       let workspace=workspaces.get(session.company_id);
-      if(!workspace){workspace=createApp({dataDir:join(dataDir,'companies',session.company_id),cloud,requestGuard:policy.guard});workspaces.set(session.company_id,workspace);}
+      if(!workspace){workspace=createApp({dataDir:join(dataDir,'companies',session.company_id),cloud,requestGuard:policy.guard,joeOptions:policy.hosted?{model:CLOUD_MODEL,provider:cloud?'OpenAI cloud':'Cloud unavailable',generate:cloud?(messages,context,key)=>cloud.chat(messages,context,session.company_id+':'+key):async()=>{throw Object.assign(new Error('Hosted Joe is not configured. The owner needs to connect the cloud service.'),{status:503});}}:{}});workspaces.set(session.company_id,workspace);}
       req.jobscopesActor={id:session.user_id,name:session.name,role:session.role};
       workspace.emit('request',req,res);
     } catch(e){if(!res.headersSent)send(e.status||500,{error:e.status?e.message:'Request failed. Please try again.'});}
@@ -52,7 +52,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.includes('--lan')){console.error('This preview requires localhost. Hosted HTTPS access is not configured.');process.exit(1);}
-  const publicOrigin=process.env.PUBLIC_ORIGIN||'';
+  const publicOrigin=process.env.PUBLIC_ORIGIN||(process.env.RENDER==='true'?process.env.RENDER_EXTERNAL_URL:'')||'';
   const server=createProduct({publicOrigin,registrationCode:process.env.PILOT_REGISTRATION_CODE||''}),port=Number(process.env.PORT||3200);
   server.listen(port,publicOrigin?'0.0.0.0':'127.0.0.1',()=>console.log(`ContractorSight company preview: http://localhost:${port}`));
   server.on('error',e=>{console.error(e.message);process.exitCode=1;server.close();});
