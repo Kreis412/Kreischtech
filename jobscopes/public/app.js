@@ -1,4 +1,5 @@
 import { normalizeCurrency } from '/currency.js';
+import { helpView } from '/help.js';
 import { measurementUI } from '/measurements.js';
 import { equipmentUI } from '/equipment.js';
 import { joeUI } from '/joe.js';
@@ -38,7 +39,7 @@ let projects = [], current = null, tab = 'operations', loadId = 0, toastTimer;
 let filters = { query: '', status: '', type: '' };
 async function api(path, opts = {}) {
   let response;
-  try { response = await fetch(path, opts); } catch { throw new Error('Cannot reach your workspace. Check the connection and keep ContractorSight running on your computer.'); }
+    try { response = await fetch(path, opts); } catch { throw new Error('Cannot reach ContractorSight. Check your internet connection, then try again.'); }
   const value = await response.json();
   if (!response.ok) throw new Error(value.error || 'Something went wrong. Please try again.');
   return value;
@@ -71,19 +72,19 @@ function dashboard() {
 }
 function renderCards() {
   const results = projects.filter(p => (!filters.status || p.status === filters.status) && (!filters.type || p.type === filters.type) && `${p.name} ${p.client} ${p.address}`.toLowerCase().includes(filters.query.toLowerCase()));
-  $('#project-list').innerHTML = !projects.length ? empty('Your next project starts here.', 'Start with your basement, kitchen, bathroom, or deck. Add the details now and capture discoveries as you go.', '<button class="primary" data-action="new-project">＋ Create your first project</button>') : !results.length ? empty('No matching projects', 'Try a different search or clear your filters.', '<button data-action="clear-filters">Clear filters</button>') : `<div class="grid">${results.map(p => `<a class="project-card" href="#project/${p.id}" aria-label="Open ${esc(p.name)}"><div class="card-cover ${slug(p.type)}"><span aria-hidden="true">${p.type === 'Deck' || p.type === 'Outdoor' ? '⌁' : '⌂'}</span><small>${esc(p.type)}</small></div><div class="card-body">${badge(p.status)}<h3>${esc(p.name)}</h3><p>${esc(p.client || 'No client added')}</p><p>${esc(p.address || 'Address not added')}</p></div><div class="card-foot"><span>${p.open_count} open ${p.open_count === 1 ? 'discovery' : 'discoveries'}</span><span>${p.photo_count} photos <span aria-hidden="true">↗</span></span></div></a>`).join('')}</div>`;
+  $('#project-list').innerHTML = !projects.length ? empty('Your next project starts here.', 'Create a test job or a real project. Give it a name, then add photos, observations and an estimate. You can fill in the other details later.', '<button class="primary" data-action="new-project">＋ Create your first project</button>') : !results.length ? empty('No matching projects', 'Try a different search or clear your filters.', '<button data-action="clear-filters">Clear filters</button>') : `<div class="grid">${results.map(p => `<a class="project-card" href="#project/${p.id}" aria-label="Open ${esc(p.name)}"><div class="card-cover ${slug(p.type)}"><span aria-hidden="true">${p.type === 'Deck' || p.type === 'Outdoor' ? '⌁' : '⌂'}</span><small>${esc(p.type)}</small></div><div class="card-body">${badge(p.status)}<h3>${esc(p.name)}</h3><p>${esc(p.client || 'No client added')}</p><p>${esc(p.address || 'Address not added')}</p></div><div class="card-foot"><span>${p.open_count} open ${p.open_count === 1 ? 'discovery' : 'discoveries'}</span><span>${p.photo_count} photos <span aria-hidden="true">↗</span></span></div></a>`).join('')}</div>`;
 }
 function projectView() {
   const p = current;
   main.innerHTML = `<a class="back" href="#">← All projects</a><section class="page-heading"><div><div class="eyebrow">${esc(p.type)} / Project workspace</div><h1>${esc(p.name)}</h1><p>${esc(p.address || 'Add a jobsite address to get started.')}</p><div class="detail-meta">${badge(p.status)}<span>${esc(p.client || 'No client added')}</span></div></div><button data-action="edit-project">Edit project <span aria-hidden="true">↗</span></button></section>
-    <nav class="upload-actions" aria-label="Quick project actions"><button class="primary" data-action="quick-camera">Take photo</button><button data-action="new-discovery">Log observation</button><button data-action="edit-project">Update project status</button></nav>
+    <details class="panel project-guide" ${!p.photos.length && !p.discoveries.length ? 'open' : ''}><summary>New to this project? Start here</summary><p>1. Add site photos. 2. Record observations or run analysis in Project workspace. 3. Build your Materials &amp; estimate.</p><div class="upload-actions"><button data-action="photos">Add site photos</button><button data-action="materials">Build an estimate</button><a class="button" href="#help">Read the quick guide</a></div></details><nav class="upload-actions" aria-label="Quick project actions"><button class="primary" data-action="quick-camera">Take photo</button><button data-action="new-discovery">Log observation</button><button data-action="edit-project">Update project status</button></nav>
     <div class="detail-layout"><section><div class="tabs" role="tablist" aria-label="Project details"><button id="discoveries-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'discoveries'}" data-action="discoveries">Discovery Log <span class="count">${p.discoveries.length}</span></button><button id="photos-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'photos'}" data-action="photos">Site photos <span class="count">${p.photos.length}</span></button></div><div id="tab-content" role="tabpanel" aria-labelledby="${tab}-tab"></div></section>
-    <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT / HOMEOWNER</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Local photo analysis creates draft findings in Project workspace for human review.</p></section></aside></div>`;
+    <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Photo analysis creates draft findings in Project workspace for human review.</p></section></aside></div>`;
   const tabs = main.querySelector('.tabs');
   tabs.insertAdjacentHTML('afterbegin', `<button id="operations-tab" role="tab" aria-controls="tab-content" aria-selected="${tab==='operations'}" data-action="operations">Project workspace</button>`);
   tabs.insertAdjacentHTML('beforeend', `<button id="materials-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'materials'}" data-action="materials">Materials & estimate</button>`);
   tabs.querySelectorAll('[role=tab]').forEach(button => button.tabIndex = button.getAttribute('aria-selected') === 'true' ? 0 : -1);
-  if(tab === 'operations') operations.mount($('#tab-content'),p); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
+  if(tab === 'operations') operations.mount($('#tab-content'),p).catch(error=>{const area=$('#tab-content');if(area&&current?.id===p.id&&tab==='operations')area.innerHTML=`<p class="error" role="alert">${esc(error.message)}</p><button data-action="operations">Try again</button>`;}); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
 }
 function discoveryView() {
   const entries = current.discoveries;
@@ -129,17 +130,17 @@ function openForm(title, subtitle, fields, save, saveLabel) {
   for(const input of currencyFields){input.type='text';input.inputMode='decimal';input.placeholder='e.g. 1250.50';input.removeAttribute('step');input.removeAttribute('min');input.removeAttribute('max');}
   form.onsubmit = async e => {
     e.preventDefault(); const button = form.querySelector('[type=submit]'); const oldText = button.textContent;
-    button.disabled = true; button.textContent = 'Saving…'; $('#form-error').hidden = true;
+    button.disabled = true; button.textContent = /analy|astra/i.test(saveLabel||'') ? 'Analyzing photo… please wait' : 'Saving…'; $('#form-error').hidden = true;
     try { const values=Object.fromEntries(new FormData(form));for(const input of currencyFields)values[input.name]=normalizeCurrency(input.value);await save(values); dialog.close(); }
-    catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+    catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; $('#form-error').scrollIntoView({block:'nearest'}); }
     finally { button.disabled = false; button.textContent = oldText; }
   };
   dialog.showModal();
 }
 function projectForm(edit = false) {
-  const p = edit ? current : { name: '', client: '', address: 'Ashtabula, OH', notes: '', type: 'General remodeling', status: 'Discovery' };
-  openForm(edit ? 'Edit project' : 'New project', 'Start with the essentials. Refine the details as you go.',
-    field('Project name', 'name', p.name, { required: true, max: 120, full: true }) + field('Client / homeowner', 'client', p.client, { full: true }) + field('Jobsite address', 'address', p.address, { max: 300, full: true }) + selectField('Project type', 'type', types, p.type) + selectField('Status', 'status', statuses, p.status) + field('Scope & notes', 'notes', p.notes, { area: true, max: 4000, full: true }),
+  const p = edit ? current : { name: '', client: '', address: '', notes: '', type: 'General remodeling', status: 'Discovery' };
+  openForm(edit ? 'Edit project' : 'New project', 'Only the project name is required. You can edit the other details later.',
+    field('Project name', 'name', p.name, { required: true, max: 120, full: true }) + field('Client / company', 'client', p.client, { full: true }) + field('Jobsite address', 'address', p.address, { max: 300, full: true }) + selectField('Project type', 'type', types, p.type) + selectField('Status', 'status', statuses, p.status) + field('Scope & notes', 'notes', p.notes, { area: true, max: 4000, full: true }),
     async values => {
       const saved = await write(edit ? `/api/projects/${p.id}` : '/api/projects', edit ? 'PUT' : 'POST', { ...values, revision: p.revision });
       toast(edit ? 'Project updated.' : 'Project created. Your workspace is ready.');
@@ -173,7 +174,7 @@ async function load() {
   if (location.hash === '#security') history.replaceState(null,'','#settings/security');
   const ticket = ++loadId; const match = location.hash.match(/^#project\/([\w-]+)$/);
   document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : ['#company','#statistics','#equipment'].includes(location.hash) ? location.hash : '#');
+    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : ['#company','#statistics','#equipment','#help'].includes(location.hash) ? location.hash : '#');
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (dialog.open) dialog.close();
@@ -192,6 +193,7 @@ async function load() {
       main.insertAdjacentHTML('afterbegin',settingsNavigation());
     }
     else if (/^#joe(?:\/[\w-]+)?$/.test(location.hash)) {current=null; $('#breadcrumb').textContent='Ask Joe'; await joe.mount(main,location.hash.split('/')[1]||'');}
+    else if(location.hash==='#help'){main.onclick=null;current=null;$('#breadcrumb').textContent='Help';helpView(main);}
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Statistics' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }

@@ -255,3 +255,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 
 .equipment-photo { display:block; width:100%; max-width:720px; max-height:480px; object-fit:contain; border-radius:12px; margin-bottom:1rem; }
 .equipment-photo-history { display:grid; gap:1rem; }
+
+/* Readable controls and guidance for field use. */
+input,select,textarea{font-size:16px} :focus-visible{outline:3px solid #168f93;outline-offset:3px}.notice,.upload-note,.line-notes,.line-warning,.scope-notes,.page-heading p,.card-body p{font-size:15px;line-height:1.6}.tabs{flex-wrap:wrap;gap:8px}.tabs button{font-size:15px;white-space:normal;min-height:48px}.estimate-toolbar button,.review-check button,.material-title button{font-size:15px;min-height:44px}.password-toggle{display:flex;align-items:center;gap:10px}.password-toggle input{width:22px;min-height:22px;margin:0}.help-steps{padding-left:24px;line-height:1.7}.help-steps li{margin:0 0 16px}.project-guide summary,main .panel>details>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:650}.project-guide{margin-bottom:20px}.project-guide p{line-height:1.6}main .panel>details{margin-bottom:12px}
