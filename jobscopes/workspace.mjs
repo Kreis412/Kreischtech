@@ -1,5 +1,6 @@
 import { measurementStore } from './measurements.mjs';
 import { equipmentStore } from './equipment.mjs';
+import { equipmentPhotos } from './equipment-photos.mjs';
 import { joeStore } from './joe.mjs';
 import { analysisStore } from './analysis.mjs';
 import { operationsStore } from './operations.mjs';
@@ -62,6 +63,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
   const estimates = materialsStore(db);
   const company = companyStore(db, estimates);
   const equipment = equipmentStore(db);
+  const assetPhotos = equipmentPhotos(db,{cloud,body,imageType});
   const operations = operationsStore(db, estimates);
   const measurements = measurementStore(db);
   const analysis = analysisStore(db,{cloud,measurements});
@@ -96,6 +98,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
       if (await joe.handle(req,url,project,json,send)) return;
       if (await analysis.handle(req, url, project, json, send)) return;
       if (await equipment.handle(req, url, project, json, send)) return;
+      if (await assetPhotos.handle(req,url,json,send)) return;
       if (await operations.handle(req, url, project, json, send)) return;
       if (await company.handle(req, url, json, send)) return;
       if (await estimates.handle(req, path, project, json, send)) return;

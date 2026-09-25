@@ -1,3 +1,4 @@
+import { normalizeCurrency } from '/currency.js';
 import { measurementUI } from '/measurements.js';
 import { equipmentUI } from '/equipment.js';
 import { joeUI } from '/joe.js';
@@ -124,10 +125,12 @@ const selectField = (label, name, list, selected) => `<label>${label}<select nam
 function openForm(title, subtitle, fields, save, saveLabel) {
   form.innerHTML = `<div class="dialog-head"><div><h2 id="dialog-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button type="button" class="close" data-close aria-label="Close form">×</button></div><div id="form-error" class="error" role="alert" hidden></div><div class="form-grid">${fields}</div><div class="form-actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">${esc(saveLabel || `Save ${title.includes('discovery') ? 'discovery' : 'project'}`)}</button></div>`;
   form.querySelectorAll('[data-close]').forEach(b => b.onclick = () => dialog.close());
+  const currencyFields=[...form.querySelectorAll('input')].filter(input=>['amount','cost','rate','unit_price'].includes(input.name));
+  for(const input of currencyFields){input.type='text';input.inputMode='decimal';input.placeholder='e.g. 1250.50';input.removeAttribute('step');input.removeAttribute('min');input.removeAttribute('max');}
   form.onsubmit = async e => {
     e.preventDefault(); const button = form.querySelector('[type=submit]'); const oldText = button.textContent;
     button.disabled = true; button.textContent = 'Saving…'; $('#form-error').hidden = true;
-    try { await save(Object.fromEntries(new FormData(form))); dialog.close(); }
+    try { const values=Object.fromEntries(new FormData(form));for(const input of currencyFields)values[input.name]=normalizeCurrency(input.value);await save(values); dialog.close(); }
     catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
     finally { button.disabled = false; button.textContent = oldText; }
   };

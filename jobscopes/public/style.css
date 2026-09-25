@@ -252,3 +252,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 
 /* The longer product name must fit the desktop navigation. */
 .sidebar .brand{font-size:18px;letter-spacing:-.5px;gap:8px}.sidebar .brand img{flex-shrink:0}.photo-viewer::backdrop{background:rgba(10,30,35,.65)}
+
+.equipment-photo { display:block; width:100%; max-width:720px; max-height:480px; object-fit:contain; border-radius:12px; margin-bottom:1rem; }
+.equipment-photo-history { display:grid; gap:1rem; }

@@ -37,6 +37,15 @@ test('authenticated companies: isolation, roles, invitations, sessions and persi
     assert.equal((await b.request('/api/company?year=2026')).totals.entry_count,0);
     await b.request('/api/account/switch','POST',{company_id:ac.id},403);
     assert.equal((await a.request('/api/projects')).length,1);
+    const asset=await a.request('/api/equipment','POST',{name:'Truck',tag:'TR-1',type:'Vehicle',status:'Available',meter:'Miles'},201);
+    const uploaded=await fetch(base+`/api/equipment/${asset.id}/photos`,{method:'POST',headers:{Cookie:a.cookie},body:png});assert.equal(uploaded.status,201);
+    const assetPhoto=await uploaded.json();
+    await b.request(`/api/equipment/${asset.id}/photos/${assetPhoto.id}`,'GET',undefined,404);
+    await anon.request(`/api/equipment/${asset.id}/photos/${assetPhoto.id}`,'GET',undefined,401);
+    const read=await fetch(base+`/api/equipment/${asset.id}/photos/${assetPhoto.id}`,{headers:{Cookie:a.cookie}});assert.equal(read.status,200);assert.equal(read.headers.get('content-type'),'image/png');
+    assert.deepEqual(Buffer.from(await read.arrayBuffer()),png);
+    await a.request(`/api/equipment/${asset.id}/photos/${assetPhoto.id}/analysis`,'POST',{context:'',cloud_consent:true},503);
+    assert.equal((await a.request(`/api/equipment/${asset.id}/photos`)).photos.length,1);
   });
   await t.test('invitation is email-bound, single-use; viewers cannot mutate or export',async()=>{
     const inv=await a.request('/api/account/invites','POST',{email:'viewer@example.test',role:'Viewer'},201);
