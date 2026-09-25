@@ -210,7 +210,7 @@ async function load() {
     else if (/^#joe(?:\/[\w-]+)?$/.test(location.hash)) {current=null; $('#breadcrumb').textContent='Ask Joe'; await joe.mount(main,location.hash.split('/')[1]||'');}
     else if(location.hash==='#help'){main.onclick=null;current=null;$('#breadcrumb').textContent='Help';helpView(main);}
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}
-    else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Statistics' : 'Company'; await company.mount(main); }
+    else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Insights' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }
     else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; $('#breadcrumb').textContent = 'Projects'; dashboard(); }
   } catch (e) { if (ticket === loadId) main.innerHTML = empty('Workspace unavailable', esc(e.message), '<button data-action="refresh">Try again</button> <a class="button" href="#">All projects</a>'); }
