@@ -19,6 +19,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null}={})
     CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),company_id TEXT REFERENCES companies(id),expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS invites(token_hash TEXT PRIMARY KEY,company_id TEXT REFERENCES companies(id),email TEXT NOT NULL,role TEXT NOT NULL,expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS password_resets(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,company_id TEXT,actor_id TEXT,action TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS memberships_company ON memberships(company_id);
     CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires);
@@ -50,6 +51,24 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null}={})
     const path=url.pathname;
     if(!path.startsWith('/api/account/')) return false;
     if(req.method==='GET' && path==='/api/account/session') {const s=session(req);send(200,s?{user:{name:s.name,email:s.email},company:{id:s.company_id,name:s.company_name,role:s.role},companies:db.prepare('SELECT c.id,c.name,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? ORDER BY c.name').all(s.user_id)}:{user:null});return true;}
+    if(req.method==='POST' && path==='/api/account/reset-password') {
+      limit('reset:'+req.socket.remoteAddress);
+      const b=await json(req),mail=email(b.email),pass=password(b.password);
+      const tokenHash=hash(typeof b.code==='string'?b.code:'');
+      const reset=db.prepare('SELECT r.*,u.email FROM password_resets r JOIN users u ON u.id=r.user_id WHERE token_hash=? AND expires>?').get(tokenHash,Date.now());
+      if(!reset||reset.email!==mail)fail(400,'Recovery code is invalid, expired, or for another email.');
+      const salt=randomBytes(16).toString('hex'),key=await derive(pass,salt,32,kdf);
+      try { transaction(()=>{
+        // Recheck after password derivation: concurrent redemptions must not both succeed.
+        const valid=db.prepare('DELETE FROM password_resets WHERE token_hash=? AND expires>?').run(tokenHash,Date.now());
+        if(!valid.changes)fail(400,'Recovery code is invalid or expired.');
+        db.prepare('UPDATE users SET salt=?,password_hash=? WHERE id=?').run(salt,key.toString('hex'),reset.user_id);
+        db.prepare('DELETE FROM password_resets WHERE user_id=?').run(reset.user_id);
+        db.prepare('DELETE FROM sessions WHERE user_id=?').run(reset.user_id);
+        for(const m of db.prepare('SELECT company_id FROM memberships WHERE user_id=?').all(reset.user_id))audit(m.company_id,reset.user_id,'password.recovered');
+      }); } finally { key.fill(0); }
+      send(200,{saved:true});return true;
+    }
     if(req.method==='POST' && ['/api/account/register','/api/account/login'].includes(path)) {
       limit('auth:'+req.socket.remoteAddress);
       const b=await json(req), mail=email(b.email), pass=password(b.password);

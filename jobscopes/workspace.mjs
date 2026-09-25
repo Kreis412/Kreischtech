@@ -6,7 +6,7 @@ import { analysisStore } from './analysis.mjs';
 import { operationsStore } from './operations.mjs';
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +59,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
       description TEXT NOT NULL, category TEXT NOT NULL, priority TEXT NOT NULL,
       status TEXT NOT NULL, next_step TEXT NOT NULL, photo_id TEXT REFERENCES photos(id),
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS photo_upload_requests(actor TEXT NOT NULL,upload_id TEXT NOT NULL,project_id TEXT NOT NULL,fingerprint TEXT NOT NULL,photo_id TEXT NOT NULL REFERENCES photos(id),PRIMARY KEY(actor,upload_id));
     `);
   const estimates = materialsStore(db);
   const company = companyStore(db, estimates);
@@ -133,8 +134,16 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
         const id = match[1]; project(id);
         const bytes = await body(req, 15 * 1024 * 1024); const mime = imageType(bytes);
         const name = text(url.searchParams.get('name') || 'Site photo', 'Photo name', 240, true);
+        const uploadId=req.headers['x-upload-id'],actor=req.jobscopesActor?.id||'local';
+        if(uploadId&& !/^[a-zA-Z0-9-]{16,80}$/.test(uploadId))fail(400,'Invalid upload identifier.');
+        const fingerprint=createHash('sha256').update(bytes).update(name).digest('hex');
+        if(uploadId){const prior=db.prepare('SELECT * FROM photo_upload_requests WHERE actor=? AND upload_id=?').get(actor,uploadId);if(prior){if(prior.project_id!==id||prior.fingerprint!==fingerprint)fail(409,'Upload identifier already belongs to another photo.');return send(200,db.prepare('SELECT id,project_id,name,mime,created_at FROM photos WHERE id=?').get(prior.photo_id));}}
         const photoId = randomUUID(), now = new Date().toISOString();
-        db.prepare('INSERT INTO photos VALUES (?, ?, ?, ?, ?, ?)').run(photoId, id, name, mime, bytes, now);
+        db.exec('BEGIN IMMEDIATE');try{
+          db.prepare('INSERT INTO photos VALUES (?, ?, ?, ?, ?, ?)').run(photoId, id, name, mime, bytes, now);
+          if(uploadId)db.prepare('INSERT INTO photo_upload_requests VALUES(?,?,?,?,?)').run(actor,uploadId,id,fingerprint,photoId);
+          db.exec('COMMIT');
+        }catch(e){db.exec('ROLLBACK');throw e;}
         return send(201, { id: photoId, project_id: id, name, mime, created_at: now });
       }
       match = path.match(/^\/api\/photos\/([\w-]+)$/);
@@ -157,7 +166,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
         } else db.prepare('INSERT INTO discoveries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)').run(id, projectId, ...values, now, now);
         return send(existingId ? 200 : 201, db.prepare('SELECT * FROM discoveries WHERE id=?').get(id));
       }
-      const staticFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/materials.js': ['materials.js', 'text/javascript; charset=utf-8'], '/company.js': ['company.js', 'text/javascript; charset=utf-8'], '/security.js': ['security.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
+      const staticFiles = { '/photo-queue.js': ['photo-queue.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/materials.js': ['materials.js', 'text/javascript; charset=utf-8'], '/company.js': ['company.js', 'text/javascript; charset=utf-8'], '/security.js': ['security.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
       if (req.method === 'GET' && staticFiles[path]) {
         const [file, type] = staticFiles[path]; return send(200, readFileSync(join(ROOT, 'public', file)), type);
       }

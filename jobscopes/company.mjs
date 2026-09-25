@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { reportingPeriod, estimateReturn } from './reporting.mjs';
 
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 const transactionTypes = ['Payment received', 'Expense paid', 'Customer refund', 'Supplier refund'];
@@ -41,16 +42,20 @@ export function companyStore(db, estimates) {
     const today = localDate(new Date().toISOString());
     const yearString = url.searchParams.get('year') || today.slice(0,4);
     const quarter = url.searchParams.get('quarter') || 'all';
-    if (!/^\d{4}$/.test(yearString) || Number(yearString) < 2000 || Number(yearString) > 2100 || !['all','1','2','3','4'].includes(quarter)) fail(400, 'Choose a year from 2000–2100 and a valid quarter.');
+    if (!/^\d{4}$/.test(yearString) || Number(yearString) < 2000 || Number(yearString) > 2100 || !['all','ytd','1','2','3','4'].includes(quarter)) fail(400, 'Choose a year from 2000–2100 and a valid period.');
     const year = Number(yearString);
-    const firstMonth = quarter === 'all' ? 1 : (Number(quarter) - 1) * 3 + 1;
-    const afterMonth = quarter === 'all' ? 13 : firstMonth + 3;
-    const start = `${year}-${String(firstMonth).padStart(2,'0')}-01`;
-    const end = afterMonth === 13 ? `${year + 1}-01-01` : `${year}-${String(afterMonth).padStart(2,'0')}-01`;
+    const firstMonth = ['all','ytd'].includes(quarter) ? 1 : (Number(quarter) - 1) * 3 + 1;
+    const afterMonth = quarter === 'all' ? 13 : quarter === 'ytd' ? Number(today.slice(5,7)) + 1 : firstMonth + 3;
+    const { start, end, previous } = reportingPeriod(year, quarter, today);
     const projects = db.prepare('SELECT id,name,client,type,status,created_at FROM projects ORDER BY name').all();
     const entries = db.prepare(`SELECT e.*,p.name project_name FROM cash_entries e LEFT JOIN projects p ON p.id=e.project_id
       WHERE entry_date>=? AND entry_date<? ORDER BY entry_date DESC,e.created_at DESC`).all(start,end);
     const totals = cash(); entries.forEach(e => addCash(totals,e));
+    const priorTotals = cash();
+    db.prepare('SELECT * FROM cash_entries WHERE entry_date>=? AND entry_date<?').all(previous.start,previous.end).forEach(e=>addCash(priorTotals,e));
+    const comparison = { ...previous, totals: priorTotals,
+      received_change_cents: totals.received_cents - priorTotals.received_cents,
+      received_change_percent: priorTotals.received_cents > 0 ? (totals.received_cents-priorTotals.received_cents)/priorTotals.received_cents*100 : null };
     const quarters = [1,2,3,4].map(q => ({ quarter:q, ...cash() }));
     db.prepare('SELECT * FROM cash_entries WHERE entry_date>=? AND entry_date<?').all(`${year}-01-01`,`${year+1}-01-01`).forEach(e => addCash(quarters[Math.floor((Number(e.entry_date.slice(5,7))-1)/3)], e));
     const months = Array.from({ length: afterMonth - firstMonth }, (_, i) => ({ month: `${year}-${String(firstMonth+i).padStart(2,'0')}`, ...cash() }));
@@ -85,9 +90,10 @@ export function companyStore(db, estimates) {
       discoveries_over_14_days:open.filter(d=>age(d)>=14).length,
       oldest_discovery_days:open.length ? Math.max(...open.map(age)) : null,
       active_with_photos:active.filter(p=>db.prepare('SELECT 1 FROM photos WHERE project_id=? LIMIT 1').get(p.id)).length };
-    const attention = [];
+    const attention = [], profitability = [];
     for (const p of projects) {
       const e = estimates.state(p.id);
+      if(e.items.length) profitability.push({id:p.id,name:p.name,status:p.status,cost_cents:e.totals.total_cents,selling_cents:e.selling_cents,gap_count:e.flags.length,...estimateReturn(e.totals.total_cents,e.selling_cents,e.flags.length)});
       const unknown = e.items.filter(i=>i.status==='Included' && i.total_cents===null).length;
       operations.unpriced_included += unknown;
       operations.unreviewed_suggestions += e.items.filter(i=>i.status==='Suggested').length;
@@ -145,7 +151,7 @@ export function companyStore(db, estimates) {
       top_one:sharesValid&&customerRows.length?customerRows[0].share:null,
       top_three:sharesValid&&customerRows.length?customerRows.slice(0,3).reduce((n,c)=>n+c.cents,0)/totals.received_cents*100:null,
       assigned_percent:sharesValid?(totals.received_cents-unknownCash)/totals.received_cents*100:null };
-    return { year,quarter,start,end,today,totals,quarters,months,expenses,entries,projects,by_project:byProject,saved,saved_projects:savedProjects,operations,attention,fun,customers,jobs,duration,nps,concentration };
+    return { year,quarter,start,end,today,totals,comparison,profitability,quarters,months,expenses,entries,projects,by_project:byProject,saved,saved_projects:savedProjects,operations,attention,fun,customers,jobs,duration,nps,concentration };
   }
   function save(id, b) {
     if (id && !db.prepare('SELECT id FROM cash_entries WHERE id=?').get(id)) fail(404,'Entry not found.');

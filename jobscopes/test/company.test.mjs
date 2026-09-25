@@ -66,6 +66,13 @@ test('company reporting: cash periods, customers, durations, NPS and honest gaps
     const item=e.items[0];await req(path+'/items/'+item.id,'PUT',{...item,status:'Included',unit_price:null});
     const gaps=await report();assert.equal(gaps.operations.unpriced_included,1);assert.equal(gaps.operations.new_included_count,1);assert.equal(gaps.operations.new_included_unpriced,1);
   });
+  await t.test('YTD comparison nets prior refunds and uses the same range as monthly totals',async()=>{
+    await req('/api/company/entries','POST',entry(a.id,100,'Payment received','2023-01-01'),201);
+    await req('/api/company/entries','POST',entry(a.id,10,'Customer refund','2023-01-01'),201);
+    const r=await report('ytd');assert.equal(r.comparison.totals.received_cents,9000);
+    assert.equal(r.comparison.received_change_cents,r.totals.received_cents-9000);
+    assert.equal(r.months.reduce((n,m)=>n+m.received_cents,0),r.totals.received_cents);
+  });
   await t.test('report values persist after restart',async()=>{
     const before=await report();await stop();await start();const after=await report();assert.deepEqual(after,before);
   });

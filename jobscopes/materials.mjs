@@ -96,7 +96,14 @@ export function materialsStore(db) {
     created_at TEXT NOT NULL, content TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS estimate_pricing (
     project_id TEXT PRIMARY KEY REFERENCES projects(id), markup REAL, notes TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS estimate_sources(project_id TEXT NOT NULL,kind TEXT NOT NULL,source_id TEXT NOT NULL,item_id TEXT NOT NULL REFERENCES material_items(id),source_revision INTEGER NOT NULL,reviewer TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(project_id,kind,source_id));
     PRAGMA user_version = 3;`);
+  function sources(projectId){
+    const discoveries=db.prepare('SELECT id,title,description,revision,status FROM discoveries WHERE project_id=?').all(projectId).map(d=>({...d,kind:'discovery',eligible:true}));
+    const hasOperations=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='operations_records'").get();
+    const findings=hasOperations?db.prepare("SELECT id,data,revision FROM operations_records WHERE project_id=? AND kind='findings'").all(projectId).map(r=>{const d=JSON.parse(r.data);return {id:r.id,title:d.title,description:d.observation,revision:r.revision,status:d.status,kind:'finding',eligible:d.status==='Confirmed'};}):[];
+    return [...discoveries,...findings].map(s=>({...s,link:db.prepare('SELECT * FROM estimate_sources WHERE project_id=? AND kind=? AND source_id=?').get(projectId,s.kind,s.id)||null}));
+  }
   function state(projectId) {
     const items = db.prepare('SELECT * FROM material_items WHERE project_id=? ORDER BY rowid').all(projectId).map(item => {
       // Quantity × waste-adjusted factor × price in cents, rounded per line. No hidden pack rounding.
@@ -108,6 +115,8 @@ export function materialsStore(db) {
     const context = db.prepare('SELECT * FROM estimate_context WHERE project_id=?').get(projectId) || { notes: '', revision: 0 };
     const discoveries = db.prepare("SELECT id, title FROM discoveries WHERE project_id=? AND status='Open' ORDER BY id").all(projectId);
     const flags = [];
+    const sourceRecords=sources(projectId);
+    for(const s of sourceRecords)if(s.link&&s.link.source_revision!==s.revision)flags.push({item_id:s.link.item_id,message:`Source changed: ${s.title}. Review the linked estimate item against the latest finding.`});
     const pricing = db.prepare('SELECT * FROM estimate_pricing WHERE project_id=?').get(projectId) || { markup: null, notes: '', revision: 0 };
     if (pricing.markup === null) flags.push({ message: 'Choose a markup, or explicitly enter 0%.' });
     if (!items.some(i => i.status === 'Included')) flags.push({ message: 'No included items yet.' });
@@ -135,13 +144,13 @@ export function materialsStore(db) {
     const markup_cents = pricing.markup === null ? null : Number((BigInt(totals.total_cents) * BigInt(Math.round(pricing.markup * 100)) + 5000n) / 10000n);
     const selling_cents = markup_cents === null ? null : totals.total_cents + markup_cents;
     const gross_margin = selling_cents ? markup_cents / selling_cents * 100 : null;
-    const result = { items, checks, context, discoveries, flags, totals, pricing, markup_cents, selling_cents, gross_margin };
+    const result = { items, checks, context, discoveries, sources:sourceRecords, flags, totals, pricing, markup_cents, selling_cents, gross_margin };
     const token = createHash('sha256').update(JSON.stringify(result)).digest('hex');
     const snapshots = db.prepare('SELECT id,label,created_at,content FROM estimate_snapshots WHERE project_id=? ORDER BY created_at DESC,rowid DESC').all(projectId).map(s => {
       const content = JSON.parse(s.content); return { id: s.id, label: s.label, created_at: s.created_at, total_cents: content.totals.total_cents, selling_cents: content.selling_cents ?? null, flag_count: content.flags.length, token: content.token };
     });
     const latest = snapshots[0];
-    return { ...result, token, snapshots, changed_since_snapshot: Boolean(latest && latest.token !== token), delta_cents: latest ? totals.total_cents - latest.total_cents : null };
+    return { ...result, estimated_return_percent: totals.total_cents > 0 && markup_cents !== null ? markup_cents / totals.total_cents * 100 : null, token, snapshots, changed_since_snapshot: Boolean(latest && latest.token !== token), delta_cents: latest ? totals.total_cents - latest.total_cents : null };
   }
   function seed(projectId, modules) {
     if (!Array.isArray(modules) || !modules.length || modules.length > 8 || modules.some(k => !Object.hasOwn(templates, k))) fail(400, 'Select valid checklist sections.');
@@ -174,6 +183,23 @@ export function materialsStore(db) {
     } else db.prepare('INSERT INTO material_items(id,project_id,section,name,kind,unit,quantity,waste,unit_cents,status,notes,exclusion_reason,price_source,price_date,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), projectId, ...values, now, now);
   }
   return { state, seed, async handle(req, path, project, json, send) {
+    const sourcePath=path.match(/^\/api\/projects\/([\w-]+)\/estimate\/sources\/([\w-]+)$/);
+    if(sourcePath&&req.method==='POST'){
+      const [,pid,sourceId]=sourcePath;project(pid);const b=await json(req);
+      const source=sources(pid).find(s=>s.id===sourceId&&s.kind===b.kind)||fail(404,'Source not found in this project.');
+      if(!source.eligible)fail(400,'Confirm the finding in Site analysis before adding it to the estimate.');
+      if(b.reviewed!==true||b.revision!==source.revision)fail(409,'Review the latest source before linking it to the estimate.');
+      if(source.link){
+        if(b.acknowledge===true)db.prepare('UPDATE estimate_sources SET source_revision=?,reviewer=? WHERE project_id=? AND kind=? AND source_id=?').run(source.revision,req.jobscopesActor?.name||'Local operator',pid,source.kind,sourceId);
+      }else{
+        const itemId=randomUUID(),now=new Date().toISOString();
+        db.exec('BEGIN IMMEDIATE');try{
+          db.prepare("INSERT INTO material_items(id,project_id,section,name,kind,unit,quantity,waste,unit_cents,status,notes,exclusion_reason,price_source,price_date,created_at,updated_at) VALUES (?,?,'Project costs',?,'Other cost','allowance',NULL,0,NULL,'Suggested',?,'','','',?,?)").run(itemId,pid,source.title,`${source.kind}: ${source.title}\n${source.description}`.slice(0,2000),now,now);
+          db.prepare('INSERT INTO estimate_sources VALUES(?,?,?,?,?,?,?)').run(pid,source.kind,sourceId,itemId,source.revision,req.jobscopesActor?.name||'Local operator',now);db.exec('COMMIT');
+        }catch(e){db.exec('ROLLBACK');throw e;}
+      }
+      send(200,state(pid));return true;
+    }
     const m = path.match(/^\/api\/projects\/([\w-]+)\/estimate(?:\/(seed|items|checks|context|pricing|snapshots)(?:\/([\w-]+))?)?$/);
     if (!m) return false;
     const [, projectId, resource, id] = m; project(projectId);
