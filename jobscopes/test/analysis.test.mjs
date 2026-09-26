@@ -36,3 +36,22 @@ test('cloud selection requires consent and saves model provenance with retry ded
  const run=async b=>{let reply;await store.handle({method:'POST',jobscopesActor:{name:'Owner',role:'Owner'}},new URL('http://localhost/api/projects/a/analysis'),()=>{},async()=>b,(status,value)=>reply=value);return reply;};
  try{await assert.rejects(run({photo_id:'photo',provider:'openai'}),e=>e.status===400);assert.equal(calls,0);const b={photo_id:'photo',provider:'openai',cloud_consent:true};await run(b);assert.equal((await run(b)).reused,true);assert.equal(calls,1);const f=JSON.parse(db.prepare('SELECT data FROM operations_records').get().data);assert.equal(f.source,'Cloud AI draft');assert.equal(f.model,'gpt-6-astra');assert.equal(f.status,'Needs review');}finally{db.close();}
 });
+
+test('blueprints use dedicated prompts and separate saved results without extra retry charges',async()=>{
+ const {BLUEPRINT_PROMPT,REVIEW_PROMPT}=await import('../analysis.mjs');
+ const db=new DatabaseSync(':memory:');db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES('a'),('b');CREATE TABLE photos(id TEXT PRIMARY KEY,project_id TEXT,content BLOB);INSERT INTO photos VALUES('photo','a',X'0102');CREATE TABLE operations_records(id TEXT PRIMARY KEY,project_id TEXT,kind TEXT,data TEXT,revision INTEGER,created_at TEXT,updated_at TEXT);`);
+ const prompts=[];const store=analysisStore(db,{cloud:{status:()=>({}),analyze:async(image,context,prompt)=>{prompts.push(prompt);return result;}}});
+ async function run(body,method='POST',pid='a',role='Owner'){let reply;await store.handle({method,jobscopesActor:{name:'Tester',role}},new URL(`http://localhost/api/projects/${pid}/analysis`),()=>{},async()=>body,(status,value)=>reply=value);return reply;}
+ try{
+ const body={photo_id:'photo',provider:'openai',cloud_consent:true,mode:'blueprint'};
+ await assert.rejects(run({...body,mode:'invalid'}),e=>e.status===400);
+ await assert.rejects(run({...body,cloud_consent:false}),e=>e.status===400);
+ await assert.rejects(run(body,'POST','b'),e=>e.status===404);
+ await assert.rejects(run(body,'POST','a','Viewer'),e=>e.status===403);
+ await run({...body,mode:'site'});await run(body);assert.equal((await run(body)).reused,true);
+ assert.deepEqual(prompts,[REVIEW_PROMPT,BLUEPRINT_PROMPT]);
+ assert.deepEqual((await run({},'GET')).runs.map(r=>r.mode).sort(),['blueprint','site']);
+ const drafts=db.prepare('SELECT data FROM operations_records').all().map(r=>JSON.parse(r.data));assert.equal(drafts[1].analysis_mode,'blueprint');assert.equal(drafts[1].status,'Needs review');assert.match(drafts[1].source,/Blueprint/);
+ analysisStore(db);assert.equal((await run({},'GET')).runs.length,2);assert.equal((await run({},'GET','b')).runs.length,0);
+ }finally{db.close();}
+});
