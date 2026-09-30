@@ -7,7 +7,7 @@ import { dirname,join,resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { accounts } from './accounts.mjs';
 import { createApp } from './workspace.mjs';
-import { accessPolicy } from './access.mjs';
+import { accessPolicy, isPublicEntryNavigation } from './access.mjs';
 const ROOT=dirname(fileURLToPath(import.meta.url));
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 async function json(req) {
@@ -27,7 +27,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
     try {
       policy.guard(req);
       if(!policy.hosted && req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) fail(403,'Cross-origin requests are blocked.');
-      if(req.headers['sec-fetch-site']==='cross-site') fail(403,'Cross-site requests are blocked.');
+      if(req.headers['sec-fetch-site']==='cross-site' && !(policy.hosted && isPublicEntryNavigation(req))) fail(403,'Cross-site requests are blocked.');
       const url=new URL(req.url,'http://localhost');
       if(await auth.handle(req,url,json,send,res)) return;
       if(req.method==='GET') {

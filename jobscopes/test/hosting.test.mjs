@@ -16,6 +16,25 @@ test('hosted policy rejects untrusted host, insecure forwarding and cross-origin
  assert.doesNotThrow(()=>policy.guard(request));
  for(const headers of [{host:'other.test'},{'x-forwarded-proto':'http'},{origin:'https://other.test'},{origin:undefined},{'sec-fetch-site':'cross-site'}]) assert.throws(()=>policy.guard({...request,headers:{...request.headers,...headers}}));
 });
+test('shared links open only the public entry document; cross-site APIs and writes stay blocked',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'contractorsight-entry-'));
+ const server=createProduct({dataDir:dir,publicOrigin:'https://example.test'});
+ server.listen(0,'127.0.0.1');await once(server,'listening');
+ t.after(async()=>{await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});});
+ const headers={host:'example.test','x-forwarded-proto':'https','sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document'};
+ const request=(path,method='GET',extra={})=>new Promise((resolve,reject)=>{
+  const req=httpRequest({hostname:'127.0.0.1',port:server.address().port,path,method,headers:{...headers,...extra}},res=>{
+   let body='';res.on('data',c=>body+=c);res.on('end',()=>resolve({status:res.statusCode,body}));
+  });req.on('error',reject);req.end();
+ });
+ for(const path of ['/','/index.html','/?from=invitation']){
+  const r=await request(path);assert.equal(r.status,200);assert.match(r.body,/ContractorSight/);
+ }
+ for(const path of ['/api/account/session','/api/projects','/api/photos/example','/accounts.js'])assert.equal((await request(path)).status,403);
+ for(const extra of [{host:'other.test'},{'x-forwarded-proto':'http'},{'sec-fetch-mode':'cors'},{'sec-fetch-dest':'iframe'}])assert.equal((await request('/','GET',extra)).status,403);
+ assert.equal((await request('/','POST')).status,403);
+ assert.equal((await request('/api/account/login','POST',{origin:'https://other.test'})).status,403);
+});
 test('hosted gateway supports shared project access with Secure sessions',async t=>{
  const dir=mkdtempSync(join(tmpdir(),'contractorsight-hosted-'));
  let server=createProduct({dataDir:dir,publicOrigin:'https://example.test',registrationCode:'test-pilot-code'});
