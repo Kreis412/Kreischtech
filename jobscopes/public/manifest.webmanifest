@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "ContractorSight by KreischTech",
+  "short_name": "ContractorSight",
+  "description": "Photos, project reviews, estimates and job costs for contractors.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#091416",
+  "theme_color": "#091416",
+  "icons": [
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
