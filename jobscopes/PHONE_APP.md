@@ -22,6 +22,6 @@ Validate cost per successful analysis, failed requests/retries, hosting/storage,
 
 ## Logo
 
-Approved CS foreground / subtle K background logo, black and teal. Generated using the built-in image-generation tool. Master: public/contractorsight-cs-k-logo.png; app exports: public/app-icon-192.png and public/app-icon-512.png. Earlier concept preserved as public/contractorsight-logo.png.
+Approved CS foreground / subtle K background logo, black and teal. Generated using the built-in image-generation tool. Master: public/contractorsight-cs-k-logo.png; app exports: public/app-icon-192.png and public/app-icon-512.png. The earlier C-only concept has been removed.
 
 Final edit prompt: Replace the central symbol with clearly readable bold geometric uppercase letters CS in bright teal, with one larger understated dark-teal uppercase K behind the CS as a background monogram for KreischTech. CS must be the unmistakable foreground and remain legible at small phone-icon size; K subordinate but recognizable. Preserve the black background and cool industrial teal identity. Use crisp solid flat lettering with minimal glow, no target crosshairs. One square full-bleed black app icon, center all lettering inside the middle 65% safe area, no extra words or mockup.
