@@ -36,10 +36,10 @@ test('test checkout enforces owner, server prices, deduplication and company bin
  assert.equal((await f.billing.confirm(owner,'cs_test_1')).confirmed,false);
  assert.equal(f.billing.status(owner).test_balance,0);
  f.pay('cs_test_1','solo');await f.billing.confirm(owner,'cs_test_1');
- assert.equal(f.billing.status(owner).test_balance,20);assert.equal(f.billing.status(other).test_balance,0);
- await f.billing.confirm(owner,'cs_test_1');assert.equal(f.billing.status(owner).test_balance,20);
+ assert.equal(f.billing.status(owner).test_balance,25);assert.equal(f.billing.status(other).test_balance,0);
+ await f.billing.confirm(owner,'cs_test_1');assert.equal(f.billing.status(owner).test_balance,25);
  await assert.rejects(f.billing.checkout(owner,'crew'),{status:409});
- f.restart();assert.equal(f.billing.status(owner).test_balance,20);
+ f.restart();assert.equal(f.billing.status(owner).test_balance,25);
 });
 test('definitive Stripe validation failure permits a fresh attempt but uncertain failures preserve identity',async t=>{
  const f=fixture(t),create=f.client.checkout.sessions.create,keys=[];
@@ -97,3 +97,4 @@ test('gateway accepts signed machine callback without browser origin but keeps b
  assert.equal(await send('/api/billing/webhook',signature,{host:'other.test'}),403);
  assert.equal(await send('/api/billing/checkout',signature),403);
 });
+

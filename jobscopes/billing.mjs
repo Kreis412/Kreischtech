@@ -3,7 +3,7 @@ import {join} from 'node:path';
 
 // Prices are proposals until payment verification, seat enforcement and store billing ship.
 export const PLANS = Object.freeze([
- Object.freeze({id:'solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:20}),
+ Object.freeze({id:'solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25}),
  Object.freeze({id:'crew',name:'Crew',price_cents:3900,interval:'month',seats:5,analyses:60}),
  Object.freeze({id:'pack',name:'Pay as you go',price_cents:1000,interval:'pack',seats:1,analyses:10})
 ]);
@@ -66,3 +66,4 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
 export function billingPreview(){return {mode:'pilot',checkout_enabled:false,currency:'USD',plans:PLANS,trial_analyses:3,
  message:'Your existing pilot access is unchanged. These are proposed launch plans; purchases and monthly allowances are not active yet.',
  joe_message:'Joe will have a separate allowance. Its launch limit is still being evaluated.'};}
+
