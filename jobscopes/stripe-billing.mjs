@@ -10,6 +10,7 @@ import {paidUsage} from './paid-usage.mjs';
 // These public IDs were verified in this account's TEST catalog. Never reuse for live billing.
 export const TEST_PRICES=Object.freeze({solo:'price_1ULhyiLNHFjZswsLREk1wyW7',crew:'price_1ULhzgLNHFjZswsLem7PSQsP',pack:'price_1ULi17LNHFjZswsLkIg3xK4L'});
 export const STRIPE_EVENTS=['checkout.session.completed','checkout.session.async_payment_succeeded','invoice.paid','invoice.payment_failed','customer.subscription.updated','customer.subscription.deleted','charge.refunded','charge.dispute.created','charge.dispute.updated','charge.dispute.closed'];
+export const TERMS_VERSION='2026-10-01';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const id=value=>typeof value==='string'?value:value?.id;
 const planFor=key=>PLANS.find(p=>p.id===key)||fail(400,'Choose a valid plan.');
@@ -32,6 +33,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  CREATE TABLE IF NOT EXISTS checkout_locks(company TEXT PRIMARY KEY,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS payment_receipts(grant_id TEXT PRIMARY KEY,company TEXT NOT NULL,charge TEXT NOT NULL UNIQUE,amount INTEGER NOT NULL,credits INTEGER NOT NULL);`);
  const inFlight=new Map();
+ db.exec('CREATE TABLE IF NOT EXISTS billing_consents(order_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,company TEXT NOT NULL,version TEXT NOT NULL,accepted_at INTEGER NOT NULL)');
  let pending=Promise.resolve();
  const serial=fn=>{const job=pending.then(fn);pending=job.catch(()=>{});return job;};
  function receipt(grantId,company,charge,amount,allowance){
@@ -47,8 +49,9 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   if(live)return {mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:[{...planFor('solo'),joe_answers:25}],balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
   return {...billingPreview(),mode:'stripe-test',checkout_enabled:session.role==='Owner',message:'Test checkout only. No real money is collected, and test credits do not increase your paid AI allowance.',test_balance:credits.balance(session.company_id),subscriptions};
  }
- async function checkout(session,key){
+ async function checkout(session,key,consent){
   owner(session);const plan=planFor(key),company=session.company_id;
+  if(live&&(consent!==TERMS_VERSION||!session.user_id))fail(400,'Please agree to the subscription terms before continuing.');
   if(live&&(key!=='solo'||memberCount(company)!==1))fail(409,'Solo is for one user. Contact support about a company with multiple members.');
   transaction(()=>{
    db.prepare('DELETE FROM checkout_locks WHERE expires<=?').run(now());
@@ -77,6 +80,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
    const order=open&&!open.session?open:{id:randomUUID(),company,plan:key,created:now()};
    if(live&&memberCount(company)!==1)fail(409,'Solo includes one user. Company membership changed while checkout was being prepared.');
    if(order!==open)db.prepare('INSERT INTO orders(id,company,plan,created) VALUES(?,?,?,?)').run(order.id,company,key,order.created);
+   if(live)db.prepare('INSERT OR IGNORE INTO billing_consents VALUES(?,?,?,?,?)').run(order.id,session.user_id,company,TERMS_VERSION,now());
    const metadata={contractorsight_order:order.id};
    const result=await external(async()=>{
     try{return await stripe.checkout.sessions.create({mode:key==='pack'?'payment':'subscription',client_reference_id:order.id,metadata,line_items:[{price:prices[key],quantity:1}],payment_method_types:['card'],expires_at:Math.floor(order.created/1000)+1860,

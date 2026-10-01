@@ -1,3 +1,4 @@
+import {DatabaseSync} from 'node:sqlite';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import Stripe from 'stripe';
@@ -9,7 +10,7 @@ import {request as httpRequest} from 'node:http';
 import {stripeBilling,TEST_PRICES} from '../stripe-billing.mjs';
 import {createProduct} from '../server.mjs';
 const key='sk_test_fake_for_unit_tests',secret='whsec_fake_for_unit_tests';
-const owner={company_id:'companyA',role:'Owner'},other={company_id:'companyB',role:'Owner'};
+const owner={user_id:'userA',company_id:'companyA',role:'Owner'},other={company_id:'companyB',role:'Owner'};
 function fixture(t,live=false){
  const prices=live?{solo:'price_live_solo'}:TEST_PRICES;
  const dir=mkdtempSync(join(tmpdir(),'cs-stripe-')),sdk=new Stripe(key),sessions=new Map(),subs=new Map(),invoices=new Map();let creates=0,wrongPrice=false;
@@ -38,8 +39,13 @@ function fixture(t,live=false){
 }
 test('live Solo grants separate saved-result allowances, refunds both and rejects unsupported plans',async t=>{
  const f=fixture(t,true);
- await assert.rejects(f.billing.checkout(owner,'crew'),{status:409});
- await f.billing.checkout(owner,'solo');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
+ await assert.rejects(f.billing.checkout(owner,'solo'),{status:400});
+ await assert.rejects(f.billing.checkout(owner,'solo','old-version'),{status:400});
+ assert.equal(f.creates,0);
+ await assert.rejects(f.billing.checkout(owner,'crew','2026-10-01'),{status:409});
+ await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_live_1','solo');
+ const audit=new DatabaseSync(join(f.dir,'stripe-live','checkout.sqlite'));const accepted=audit.prepare('SELECT * FROM billing_consents').get();audit.close();assert.equal(accepted.user_id,owner.user_id);assert.equal(accepted.version,'2026-10-01');assert.equal(accepted.company,owner.company_id);
+ await f.billing.confirm(owner,s.id);
  assert.equal(f.billing.status(owner).mode,'stripe-live');
  assert.equal(f.billing.balance('companyA'),25);assert.equal(f.billing.balance('companyA','joe'),25);
  const run=f.billing.runSaved('companyA');await run('analysis','photo',async()=>({saved:true}));await run('joe','question',async()=>'Saved answer');
@@ -57,16 +63,16 @@ test('test checkout enforces owner, server prices, deduplication and company bin
  const f=fixture(t);
  await assert.rejects(f.billing.checkout({...owner,role:'Manager'},'solo'),{status:403});
  await assert.rejects(f.billing.checkout(owner,'invented'),{status:400});
- const first=await f.billing.checkout(owner,'solo');assert.match(first.url,/checkout.stripe.com/);
- await f.billing.checkout(owner,'solo');assert.equal(f.creates,1);
- await assert.rejects(f.billing.checkout(owner,'crew'),{status:409});
+ const first=await f.billing.checkout(owner,'solo','2026-10-01');assert.match(first.url,/checkout.stripe.com/);
+ await f.billing.checkout(owner,'solo','2026-10-01');assert.equal(f.creates,1);
+ await assert.rejects(f.billing.checkout(owner,'crew','2026-10-01'),{status:409});
  await assert.rejects(f.billing.confirm(other,'cs_test_1'),{status:404});
  assert.equal((await f.billing.confirm(owner,'cs_test_1')).confirmed,false);
  assert.equal(f.billing.status(owner).test_balance,0);
  f.pay('cs_test_1','solo');await f.billing.confirm(owner,'cs_test_1');
  assert.equal(f.billing.status(owner).test_balance,25);assert.equal(f.billing.status(other).test_balance,0);
  await f.billing.confirm(owner,'cs_test_1');assert.equal(f.billing.status(owner).test_balance,25);
- await assert.rejects(f.billing.checkout(owner,'crew'),{status:409});
+ await assert.rejects(f.billing.checkout(owner,'crew','2026-10-01'),{status:409});
  f.restart();assert.equal(f.billing.status(owner).test_balance,25);
 });
 
@@ -80,7 +86,7 @@ test('hosted paid account uses Joe credits, keeps saved replies free and blocks 
  const a=user(),b=user();
  for(const [u,email] of [[a,'a@example.test'],[b,'b@example.test']])assert.equal((await u.send('/api/account/register',{email,password:'long test password 2026',name:'Owner',company:email,registration_code:'invite-for-test'})).status,201);
  const invite=await a.send('/api/account/invites',{email:'b@example.test',role:'Manager'});assert.equal(invite.status,201);
- assert.equal((await a.send('/api/billing/checkout',{plan:'solo'})).status,200);f.pay('cs_live_1','solo');
+ assert.equal((await a.send('/api/billing/checkout',{plan:'solo',terms_version:'2026-10-01'})).status,200);f.pay('cs_live_1','solo');
  assert.equal((await a.send('/api/billing/confirm',{session_id:'cs_live_1'})).status,200);
  assert.equal((await b.send('/api/account/join',{code:invite.body.code})).status,409);
  assert.equal((await a.send('/api/account/invites',{email:'c@example.test',role:'Viewer'})).status,409);
@@ -95,11 +101,11 @@ test('hosted paid account uses Joe credits, keeps saved replies free and blocks 
 test('definitive Stripe validation failure permits a fresh attempt but uncertain failures preserve identity',async t=>{
  const f=fixture(t),create=f.client.checkout.sessions.create,keys=[];
  f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);throw {type:'StripeInvalidRequestError',statusCode:400};};
- await assert.rejects(f.billing.checkout(owner,'solo'),/Please try checkout again/);
+ await assert.rejects(f.billing.checkout(owner,'solo','2026-10-01'),/Please try checkout again/);
  f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);throw {type:'StripeConnectionError'};};
- await assert.rejects(f.billing.checkout(owner,'solo'),/No automatic retry/);
+ await assert.rejects(f.billing.checkout(owner,'solo','2026-10-01'),/No automatic retry/);
  f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);return create(params);};
- await f.billing.checkout(owner,'solo');
+ await f.billing.checkout(owner,'solo','2026-10-01');
  assert.notEqual(keys[0],keys[1]);assert.equal(keys[1],keys[2]);assert.equal(f.creates,1);
 });
 
@@ -112,7 +118,7 @@ test('pack test fulfillment is idempotent and malformed or unpaid prices never g
  f.wrongPrice();await assert.rejects(f.billing.checkout(other,'crew'),{status:503});
 });
 test('verified paid renewals add once, failures add nothing and cancellation retains pilot data',async t=>{
- const f=fixture(t);await f.billing.checkout(owner,'crew');const s=f.pay('cs_test_1','crew');
+ const f=fixture(t);await f.billing.checkout(owner,'crew','2026-10-01');const s=f.pay('cs_test_1','crew');
  // Invoice may arrive before checkout completion.
  await f.event('invoice.paid',{id:s.invoice});await f.billing.confirm(owner,s.id);assert.equal(f.billing.status(owner).test_balance,60);
  const renewal=structuredClone(f.invoices.get(s.invoice));renewal.id='in_renewal';renewal.billing_reason='subscription_cycle';renewal.lines.data[0].period.end+=30*86400;
@@ -139,7 +145,7 @@ test('webhooks reject tampering, stale signatures, live events and unconfigured 
 });
 
 test('refund and dispute deliveries reconcile current payment state without granting twice',async t=>{
- const f=fixture(t);await f.billing.checkout(owner,'solo');const s=f.pay('cs_test_1','solo'),charge=f.charges.get('ch_'+s.id);
+ const f=fixture(t);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_test_1','solo'),charge=f.charges.get('ch_'+s.id);
  // Refund event precedes the first invoice delivery: fulfillment must still see it.
  charge.amount_refunded=950;await f.event('charge.refunded',{id:charge.id});
  await f.billing.confirm(owner,s.id);assert.equal(f.billing.status(owner).test_balance,12);
@@ -154,7 +160,7 @@ test('refund and dispute deliveries reconcile current payment state without gran
 });
 
 test('one charge cannot buy two invoice grants and refund events cover packs',async t=>{
- const f=fixture(t);await f.billing.checkout(owner,'solo');const s=f.pay('cs_test_1','solo');await f.billing.confirm(owner,s.id);
+ const f=fixture(t);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_test_1','solo');await f.billing.confirm(owner,s.id);
  const duplicate={...f.invoices.get(s.invoice),id:'in_reused_payment'};f.invoices.set(duplicate.id,duplicate);
  await assert.rejects(f.event('invoice.paid',{id:duplicate.id}),{status:409});assert.equal(f.billing.status(owner).test_balance,25);
  await f.billing.checkout(other,'pack');const pack=f.pay('cs_test_2','pack');await f.billing.confirm(other,pack.id);assert.equal(f.billing.status(other).test_balance,10);

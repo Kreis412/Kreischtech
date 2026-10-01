@@ -91,3 +91,11 @@ Test price IDs verified from the user's Stripe dashboard:
 Sign in as an owner, open Settings > Plan & usage, and choose a test checkout. Use Stripe test payment data only. On return choose Check test payment (also recovers a closed return page). Verify Solo gives 25 simulated credits, Crew 60, pack 10; repeats must not grant twice. One active subscription per company is supported; changes/prorations are rejected for manual review. Cancel a test subscription using the explicit cancellation control. Use Stripe test clocks/events for renewals and payment failures. Automated tests mock Stripe responses but use the real SDK signature verifier; real Stripe end-to-end acceptance is still required after configuring the event destination.
 
 
+
+## Customer policies — October 1, 2026
+
+Approved legal name: Kreischtech Contractors LLC, doing business as KreischTech.
+Approved refund policy: full refund requested within 7 days of the first subscription payment; later requests individually reviewed; statutory rights preserved.
+Public /terms.html, /privacy.html and /refunds.html are accessible before sign-in. Live checkout requires explicit versioned agreement and records owner/company/order/time in billing_consents. No existing login credentials change.
+93 tests pass. Live credentials, live webhook and final live checkout verification remain pending. Test mode stays enabled until those are ready.
+Refund handling: verify request/account/payment, refund through Stripe to original payment method, and cancel renewal if requested. A refund alone does not cancel renewal. Never request full card details or passwords over email.
