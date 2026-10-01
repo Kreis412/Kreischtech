@@ -2,6 +2,10 @@
 
 ## Paid launch preparation — October 1, 2026
 
+### Verified hosted refund test — October 1, 2026
+
+Deployed commits 6fe5894 and cedfdca; full suite 93 passed before the final refresh-only change, then all 14 targeted billing tests passed. User saved the destination with 10 selected events. The existing $19 sandbox payment `pi_3ULqi5LNHFjZswsL0V98cFza` was fully refunded in Stripe test mode. On an ordinary page reload, before pressing Check test payment, ContractorSight showed **0 simulated analysis credits**, down from 20. This confirms automatic refund notification handling against Stripe's test service. The test subscription remains active; a refund does not itself cancel renewal. Pilot AI access is separate and was not changed. Screenshot: `contractorsight-refund-test.png` in the project mirror root. Real payment activation, customer terms/privacy review and private live credential setup remain outstanding.
+
 User requested starting the real launch. Sandbox checkout was verified end-to-end: the signed payment notifications activated Solo and granted 20 simulated credits for the purchase made before the allowance change. Solo is now configured for $19/month and 25 analyses for subsequent grants. Real billing remains disabled.
 
 Owner approved Solo-only website release ($19/month, 25 analyses plus 25 separate Joe answers) and $25 initial monthly AI funding. Crew, packs and Google Play remain later releases. Owner approved kreischtech@gmail.com as the public support, billing and refund contact; it is now linked in the billing and help screens. Set the same address in Stripe's public customer support details before live checkout opens.
