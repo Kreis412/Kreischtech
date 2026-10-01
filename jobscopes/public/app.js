@@ -1,3 +1,4 @@
+import {billingView} from '/billing.js';
 import { api } from '/api.js';
 import { normalizeCurrency } from '/currency.js';
 import { pendingPhotos,queuePhoto,sendPhoto,discardPhoto } from '/photo-queue.js';
@@ -192,7 +193,7 @@ function discoveryForm(id) {
 }
 
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/billing','Plan & usage'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView() {
   const dark=document.documentElement.dataset.theme==='dark';
@@ -217,6 +218,7 @@ async function load() {
     if (location.hash.startsWith('#settings')) {
       main.onclick=null;current=null;$('#breadcrumb').textContent='Settings';
       if(location.hash==='#settings/security') await security.mount(main);
+      else if(location.hash==='#settings/billing') await billingView(main,{api,esc});
       else if(location.hash==='#settings/appearance') appearanceView();
       else if(location.hash==='#settings/assistant') joe.settings(main);
       else await account.mount();

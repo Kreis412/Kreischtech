@@ -1,0 +1,7 @@
+export async function billingView(host,{api,esc}){
+ const data=await api('/api/billing');
+ const money=cents=>new Intl.NumberFormat('en-US',{style:'currency',currency:data.currency,maximumFractionDigits:0}).format(cents/100);
+ host.innerHTML=`<section class="page-heading"><div><div class="eyebrow">Workspace settings</div><h1>Plan &amp; usage</h1><p>${esc(data.message)}</p></div></section>
+ <section class="panel"><h2>Current access: Pilot</h2><p>No subscription payment is collected here.</p><p>${esc(data.joe_message)}</p><p>Launch trial proposal: ${esc(data.trial_analyses)} analyses. This does not reset your current pilot allowance.</p></section>
+ <section class="panel"><h2>Proposed launch pricing</h2><p>USD. Allowances and terms will be confirmed before purchases open.</p><div class="plan-grid">${data.plans.map(p=>`<article class="plan-card"><h3>${esc(p.name)}</h3><p class="plan-price">${esc(money(p.price_cents))}<small> / ${p.interval==='month'?'month':'10-analysis pack'}</small></p><p>${esc(p.seats===1?'1 user':`Up to ${p.seats} users`)}</p><p>${esc(p.analyses)} analyses ${p.interval==='month'?'per billing month':'per pack'}</p><p>${p.id==='crew'?'Shared company projects and core project tools.':p.id==='solo'?'Core project tools, estimates and photo analysis.':'Basic workspace with no monthly subscription.'}</p><span class="badge">Not available to purchase yet</span></article>`).join('')}</div></section>`;
+}

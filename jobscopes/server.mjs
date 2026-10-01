@@ -1,3 +1,4 @@
+import {billingPreview} from './billing.mjs';
 import { prepareHostedPhoto } from './hosted-photo.mjs';
 import { cloudAdapter, CLOUD_MODEL } from './cloud-analysis.mjs';
 import { existsSync } from 'node:fs';
@@ -32,10 +33,11 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(await auth.handle(req,url,json,send,res)) return;
       if(req.method==='GET') {
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        const files={'api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
+        const files={'billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
         if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);
       }
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(url.pathname==='/api/billing'){if(req.method!=='GET')fail(405,'Purchases are not available yet.');return send(200,billingPreview());}
       if(req.headers['x-upload-id']&&(req.headers['x-upload-company']!==session.company_id||req.headers['x-upload-owner']!==encodeURIComponent(session.email)))fail(409,'Sign in to the original account and company to retry this upload.');
       if(url.pathname==='/api/security' && req.method==='GET') return send(200,{access:policy.hosted?'Secure hosted workspace':'This computer only',authentication:true,storageEncrypted:false,encryptedBackups:session.role==='Owner'});
       if(url.pathname.startsWith('/api/security/') && session.role!=='Owner') fail(403,'Only the owner can export a company backup.');
