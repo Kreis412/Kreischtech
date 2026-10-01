@@ -99,3 +99,7 @@ Approved refund policy: full refund requested within 7 days of the first subscri
 Public /terms.html, /privacy.html and /refunds.html are accessible before sign-in. Live checkout requires explicit versioned agreement and records owner/company/order/time in billing_consents. No existing login credentials change.
 93 tests pass. Live credentials, live webhook and final live checkout verification remain pending. Test mode stays enabled until those are ready.
 Refund handling: verify request/account/payment, refund through Stripe to original payment method, and cancel renewal if requested. A refund alone does not cancel renewal. Never request full card details or passwords over email.
+
+## Live price correction — October 1, 2026
+The original live price price_1ULhqDLNHFjZswsLhYh7UefI displayed $19/month but used tiers (price per unit: varies). Strict checkout correctly rejected it. Created replacement price_1ULs7mLNHFjZswsLmrhdCY0f on prod_VMQhgp32UY32v7: USD19, recurring monthly, flat rate with fixed unit price, no tiers. Updated Render STRIPE_SOLO_PRICE_ID; deploy dep-davdkm9srm7s73bjjssg pending verification. Original price retained, no existing subscriptions changed. No payment submitted.
+Verified: corrected-price deploy succeeded; existing user-checked consent retained; retry opened live Stripe checkout showing USD19/month and approved 25+25 allowances. Payment form left empty for user; no charge submitted. Render AX setValue did not persist first edit; Playwright fill plus blur saved corrected price on second deploy.
