@@ -1,5 +1,17 @@
 # Billing rollout
 
+## Paid launch preparation — October 1, 2026
+
+User requested starting the real launch. Sandbox checkout was verified end-to-end: the signed payment notifications activated Solo and granted 20 simulated credits for the purchase made before the allowance change. Solo is now configured for $19/month and 25 analyses for subsequent grants. Real billing remains disabled.
+
+Owner approved Solo-only website release ($19/month, 25 analyses) and $25 initial monthly AI funding. Crew, packs and Google Play remain later releases. Public support email is pending. Joe's commercial allowance still needs a published limit.
+
+Local prelaunch foundation now provides optional runSaved credit settlement hooks for site/blueprint/equipment analysis and Joe, plus a durable monthly provider spending meter. Failed generation/validation/save refunds customer credits; cached results bypass new reservations. Unknown provider costs retain a conservative $3 hold; reported costs use the verified rates below. Budget dates are UTC calendar months; 80% alert is a status flag, not an email notification. The meter is an application estimate, not a provider-enforced dollar guarantee. It is not enabled in the production server yet. Live Stripe mode, refund/dispute reconciliation, seats, customer terms, and production wiring remain required before launch. Full suite: 87 passing tests, no paid API calls made during tests.
+
+Code audit confirms the AI adapter still uses a shared installation lifetime pilot cap (maximum 22 attempts), not purchased credits. Before collecting real payments, integrate company credit reservations and settlement after saved results across site, blueprint, equipment and Joe paths; implement monthly provider spending accounting independently of customer credits. Also complete refund/dispute handling, seats and published usage terms, support/recovery and live Stripe configuration. Existing pilot access must remain intact.
+
+Current official Astra standard rates checked: $10 per million input tokens and $50 per million output tokens. Source: https://developers.openai.com/api/docs/models/gpt-6-astra . These are token rates, not a guaranteed fixed price per photo. No additional AI calls or spending were authorized by this audit.
+
 Approved direction: USD $19/month Solo (1 user, 25 analyses), $39/month Crew (up to 5 users, 60 analyses), $10 for 10 pay-as-you-go analyses, proposed trial 3 analyses. User has an existing Stripe account. Prices/allowances remain launch proposals pending measured AI costs. No setup fee proposed. Joe needs a separate bounded allowance; its amount is not yet decided.
 
 ## Implemented locally
