@@ -41,6 +41,17 @@ test('test checkout enforces owner, server prices, deduplication and company bin
  await assert.rejects(f.billing.checkout(owner,'crew'),{status:409});
  f.restart();assert.equal(f.billing.status(owner).test_balance,20);
 });
+test('definitive Stripe validation failure permits a fresh attempt but uncertain failures preserve identity',async t=>{
+ const f=fixture(t),create=f.client.checkout.sessions.create,keys=[];
+ f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);throw {type:'StripeInvalidRequestError',statusCode:400};};
+ await assert.rejects(f.billing.checkout(owner,'solo'),/Please try checkout again/);
+ f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);throw {type:'StripeConnectionError'};};
+ await assert.rejects(f.billing.checkout(owner,'solo'),/No automatic retry/);
+ f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);return create(params);};
+ await f.billing.checkout(owner,'solo');
+ assert.notEqual(keys[0],keys[1]);assert.equal(keys[1],keys[2]);assert.equal(f.creates,1);
+});
+
 test('pack test fulfillment is idempotent and malformed or unpaid prices never grant credits',async t=>{
  const f=fixture(t);await f.billing.checkout(owner,'pack');const s=f.pay('cs_test_1','pack');
  s.amount_total=1;await assert.rejects(f.billing.confirm(owner,s.id),{status:409});assert.equal(f.billing.status(owner).test_balance,0);

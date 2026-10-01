@@ -18,7 +18,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  // Fail closed without disrupting existing pilot access if an operator supplies a live key.
  const ready=enabled && /^sk_test_\S+$/.test(secretKey) && /^whsec_\S+$/.test(webhookSecret) && /^https:\/\//.test(origin||'');
  if(!ready)return {ready:false,status:()=>billingPreview(),close(){}};
- const stripe=client||new Stripe(secretKey,{apiVersion:'2026-09-30.endive',maxNetworkRetries:0,timeout:20000});
+ const stripe=client||new Stripe(secretKey,{apiVersion:'2026-08-26.dahlia',maxNetworkRetries:0,timeout:20000});
  const directory=join(dataDir,'stripe-test');mkdirSync(directory,{recursive:true});
  const credits=billingStore(directory,{now}),db=new DatabaseSync(join(directory,'checkout.sqlite'));
  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -64,8 +64,19 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
    const order=open&&!open.session?open:{id:randomUUID(),company,plan:key,created:now()};
    if(order!==open)db.prepare('INSERT INTO orders(id,company,plan,created) VALUES(?,?,?,?)').run(order.id,company,key,order.created);
    const metadata={contractorsight_order:order.id};
-   const result=await external(()=>stripe.checkout.sessions.create({mode:key==='pack'?'payment':'subscription',client_reference_id:order.id,metadata,line_items:[{price:prices[key],quantity:1}],payment_method_types:['card'],expires_at:Math.floor(order.created/1000)+1860,
-    ...(key==='pack'?{}:{subscription_data:{metadata}}),success_url:origin+'/?stripe_session={CHECKOUT_SESSION_ID}#settings/billing',cancel_url:origin+'/#settings/billing'}, {idempotencyKey:'cs-test:'+order.id}));
+   const result=await external(async()=>{
+    try{return await stripe.checkout.sessions.create({mode:key==='pack'?'payment':'subscription',client_reference_id:order.id,metadata,line_items:[{price:prices[key],quantity:1}],payment_method_types:['card'],expires_at:Math.floor(order.created/1000)+1860,
+     ...(key==='pack'?{}:{subscription_data:{metadata}}),success_url:origin+'/?stripe_session={CHECKOUT_SESSION_ID}#settings/billing',cancel_url:origin+'/#settings/billing'}, {idempotencyKey:'cs-test:'+order.id});}
+    catch(e){
+     // Only retire a definitive validation rejection. Network/server/idempotency
+     // errors may have created a session and must retain the original identity.
+     if(e.type==='StripeInvalidRequestError'&&e.statusCode===400){
+      db.prepare('UPDATE orders SET fulfilled=-1 WHERE id=? AND session IS NULL').run(order.id);
+      fail(502,'Stripe rejected this checkout attempt. No payment was created. Please try checkout again.');
+     }
+     throw e;
+    }
+   });
    if(result.livemode!==false||!validId(result.id,'cs_test_'))fail(502,'Stripe did not return a test checkout.');
    const url=safeUrl(result.url,'checkout.stripe.com');db.prepare('UPDATE orders SET session=?,url=? WHERE id=?').run(result.id,url,order.id);
    return {url};

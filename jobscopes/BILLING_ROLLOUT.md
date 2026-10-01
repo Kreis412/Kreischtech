@@ -22,7 +22,7 @@ Approved direction: USD $19/month Solo (1 user, 20 analyses), $39/month Crew (up
 
 ## Stripe test integration — October 1, 2026
 
-Implemented owner-only hosted Checkout, payment confirmation, a signed raw-body webhook endpoint, invoice-based renewal credits, scheduled test cancellation, and company-bound test balances. Stripe Node 23.0.0 is pinned with API version 2026-09-30.endive. All amounts and price IDs come from the server. Price amounts/type/currency are verified with Stripe before checkout. Repeated checkout requests reuse open sessions; uncertain requests retain their idempotency key. Invoice and session identities prevent double grants across restarts and event redelivery.
+Implemented owner-only hosted Checkout, payment confirmation, a signed raw-body webhook endpoint, invoice-based renewal credits, scheduled test cancellation, and company-bound test balances. Stripe Node 23.0.0 is pinned with API version 2026-08-26.dahlia. All amounts and price IDs come from the server. Price amounts/type/currency are verified with Stripe before checkout. Repeated checkout requests reuse open sessions; uncertain requests retain their idempotency key. Invoice and session identities prevent double grants across restarts and event redelivery.
 
 Test payments are intentionally isolated under `DATA_DIR/stripe-test/`. They do not grant real AI calls or change pilot seats. No live key is accepted. Existing tester sign-in and the shared pilot AI spending guard remain unchanged. Refund/dispute handling, real credit consumption/seat enforcement, final allowances and live purchase activation remain release blockers.
 
@@ -56,3 +56,4 @@ Test price IDs verified from the user's Stripe dashboard:
 ### Acceptance test
 
 Sign in as an owner, open Settings > Plan & usage, and choose a test checkout. Use Stripe test payment data only. On return choose Check test payment (also recovers a closed return page). Verify Solo gives 20 simulated credits, Crew 60, pack 10; repeats must not grant twice. One active subscription per company is supported; changes/prorations are rejected for manual review. Cancel a test subscription using the explicit cancellation control. Use Stripe test clocks/events for renewals and payment failures. Automated tests mock Stripe responses but use the real SDK signature verifier; real Stripe end-to-end acceptance is still required after configuring the event destination.
+
