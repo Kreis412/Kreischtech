@@ -82,5 +82,5 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
 
 export function billingPreview(){return {mode:'pilot',checkout_enabled:false,currency:'USD',plans:PLANS,trial_analyses:3,
  message:'Your existing pilot access is unchanged. These are proposed launch plans; purchases and monthly allowances are not active yet.',
- joe_message:'Joe will have a separate allowance. Its launch limit is still being evaluated.'};}
+ joe_message:'The Solo launch plan includes 25 Joe answers per billing month, separate from its 25 photo analyses. Paid allowances are not active during this pilot.'};}
 

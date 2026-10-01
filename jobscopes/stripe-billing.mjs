@@ -165,7 +165,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  }
  async function confirm(session,sessionId){owner(session);return serial(()=>fulfill(sessionId,session.company_id));}
  async function sync(session){
-  owner(session);return serial(async()=>{const orders=db.prepare('SELECT session FROM orders WHERE company=? AND session IS NOT NULL AND fulfilled=0 ORDER BY created DESC LIMIT 10').all(session.company_id);
+  owner(session);return serial(async()=>{const orders=db.prepare('SELECT session FROM orders WHERE company=? AND session IS NOT NULL AND fulfilled>=0 ORDER BY created DESC LIMIT 10').all(session.company_id);
   for(const order of orders)await fulfill(order.session,session.company_id);
   return status(session);});
  }
