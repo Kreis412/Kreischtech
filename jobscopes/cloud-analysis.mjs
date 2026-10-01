@@ -24,7 +24,7 @@ export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempt
  ledger.exec('CREATE UNIQUE INDEX IF NOT EXISTS attempt_request ON attempts(request_key)');
  const configPath=join(dataDir,'cloud-pilot.json');
  const config=existsSync(configPath)?JSON.parse(readFileSync(configPath,'utf8')):{max_attempts:5};
- const limit=maxAttempts??config.max_attempts;if(!Number.isInteger(limit)||limit<0||limit>10)throw new Error('Invalid local pilot limit.');
+ const limit=maxAttempts??config.max_attempts;if(!Number.isInteger(limit)||limit<0||limit>22)throw new Error('Invalid local pilot limit.');
  const status=()=>({reserved_usd:ledger.prepare('SELECT count(*) n FROM attempts').get().n,limit_usd:limit,remaining_attempts:Math.max(0,limit-ledger.prepare('SELECT count(*) n FROM attempts').get().n)});
  async function analyze(image,context,prompt,schema){
   if(typeof context!=='string'||context.length>2000||image.length>15*1024*1024)fail(400,'Photo or context exceeds the pilot limit.');

@@ -1,3 +1,4 @@
+import { api } from '/api.js';
 import { normalizeCurrency } from '/currency.js';
 import { pendingPhotos,queuePhoto,sendPhoto,discardPhoto } from '/photo-queue.js';
 import { helpView } from '/help.js';
@@ -38,13 +39,6 @@ const date = value => new Date(value).toLocaleDateString(undefined, { month: 'sh
 const options = (list, selected) => list.map(v => `<option value="${esc(v)}" ${v === selected ? 'selected' : ''}>${esc(v)}</option>`).join('');
 let projects = [], current = null, tab = 'operations', loadId = 0, toastTimer;
 let filters = { query: '', status: '', type: '' };
-async function api(path, opts = {}) {
-  let response;
-    try { response = await fetch(path, opts); } catch { throw new Error('Cannot reach ContractorSight. Check your internet connection, then try again.'); }
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error || 'Something went wrong. Please try again.');
-  return value;
-}
 const write = (path, method, value) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 const materials = materialUI({ api, write, esc, field, selectField: (...args) => selectField(...args), openForm, toast, getProject: () => current });
 const operations = operationsUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast});
@@ -107,10 +101,26 @@ function photoView() {
   showPendingPhotos();
 }
 let uploadingPhotos=false;
+async function resumePendingPhotos(){
+ if(uploadingPhotos||!navigator.onLine||!current?.id)return;
+ const session=account.getSession(),pid=current.id;if(!session?.user)return;
+ uploadingPhotos=true;let saved=0;
+ try{
+  const pending=await pendingPhotos(session.user.email,session.company.id,pid);
+  for(const photo of pending){
+   if(!navigator.onLine)break;
+   try{await sendPhoto(photo,api);saved++;}catch{break;}
+  }
+  if(saved&&current?.id===pid){const fresh=await api('/api/projects/'+pid,{signal:AbortSignal.timeout(10000)});if(current?.id===pid){current=fresh;projectView();}}
+  if(saved)toast(saved+' queued photo(s) uploaded.');
+ }catch{}finally{uploadingPhotos=false;showPendingPhotos();}
+}
+window.addEventListener('online',resumePendingPhotos);
+
 async function showPendingPhotos(){
  const host=$('#pending-photos'),pid=current?.id,session=account.getSession();if(!host||!session?.user)return;
  try{const pending=await pendingPhotos(session.user.email,session.company.id,pid);if(!host.isConnected)return;
- host.innerHTML=`<h3>Waiting to upload (${pending.length})</h3><p>Pending photos stay on this browser. Keep originals until they appear in Site photos. Reopen this project online and tap Retry. Photos are not shared with teammates until saved on the server.</p>${pending.map(p=>`<div class="review-check"><span>${esc(p.name)}</span><button data-retry="${p.id}">Retry</button><button data-discard="${p.id}">Discard pending copy</button></div>`).join('')}`;
+ host.innerHTML=`<h3>Waiting to upload (${pending.length})</h3><p>Pending photos stay on this browser. Keep originals until they appear in Site photos. Keep this project open: uploads resume when your connection returns. You can also tap Retry. Photos are not shared with teammates until saved on the server.</p>${pending.map(p=>`<div class="review-check"><span>${esc(p.name)}</span><button data-retry="${p.id}">Retry</button><button data-discard="${p.id}">Discard pending copy</button></div>`).join('')}`;
  host.querySelectorAll('[data-retry]').forEach(b=>b.onclick=async()=>{if(uploadingPhotos)return;uploadingPhotos=true;b.disabled=true;try{await sendPhoto(pending.find(p=>p.id===b.dataset.retry),api);toast('Photo saved to the project.');if(current?.id===pid){const fresh=await api(`/api/projects/${pid}`,{signal:AbortSignal.timeout(10000)});if(current?.id===pid){current=fresh;projectView();}}}catch(e){toast(e.message,true);}finally{uploadingPhotos=false;if(b.isConnected)b.disabled=false;showPendingPhotos();}});
  host.querySelectorAll('[data-discard]').forEach(b=>b.onclick=async()=>{if(uploadingPhotos)return;try{await discardPhoto(b.dataset.discard);showPendingPhotos();}catch(e){toast(e.message,true);}});
  }catch{host.textContent='This browser cannot store pending photos. Keep your originals and enable browser storage before uploading.';}
@@ -120,13 +130,13 @@ async function uploadPhotos(event) {
   if (!files.length||uploadingPhotos) return;
   uploadingPhotos=true;
   const session=account.getSession();
-  const statusEl = $('#upload-status'); let completed = 0; const failures = [];
+  const statusEl = $('#upload-status'); let completed = 0, queued = 0; const failures = [];
   const buttons = [...document.querySelectorAll('.upload-actions button')]; buttons.forEach(b => b.disabled = true);
   for (const [i, file] of files.entries()) {
     statusEl.textContent = `Uploading ${i + 1} of ${files.length}: ${file.name}`;
     try {
       const pending=await queuePhoto(file,session,projectId);
-      await sendPhoto(pending,api);completed++;
+      if(navigator.onLine){await sendPhoto(pending,api);completed++;}else{queued++;}
     } catch (e) { failures.push(`${file.name}: ${e.message}`); }
   }
   uploadingPhotos=false;buttons.forEach(b => b.disabled = false); input.value = '';
@@ -138,7 +148,7 @@ async function uploadPhotos(event) {
     if (failures.length && $('#upload-status')) { $('#upload-status').className = 'error'; $('#upload-status').textContent = failures.join(' '); }
   }
   showPendingPhotos();
-  toast(`${completed} ${completed === 1 ? 'photo' : 'photos'} saved.${failures.length ? ` ${failures.length} could not upload. Check Waiting to upload; keep your originals.` : ''}`, Boolean(failures.length));
+  toast(`${queued ? queued+" photo(s) saved on this device, waiting for a connection. " : ""}${completed} ${completed === 1 ? 'photo' : 'photos'} saved.${failures.length ? ` ${failures.length} could not upload. Check Waiting to upload; keep your originals.` : ''}`, Boolean(failures.length));
 }
 function field(label, name, value, { required = false, max = 160, full = false, area = false } = {}) {
   return `<label class="${full ? 'full' : ''}">${label}${required ? ' *' : ''}${area ? `<textarea name="${name}" maxlength="${max}" ${required ? 'required' : ''}>${esc(value)}</textarea>` : `<input name="${name}" value="${esc(value)}" maxlength="${max}" ${required ? 'required' : ''}>`}</label>`;

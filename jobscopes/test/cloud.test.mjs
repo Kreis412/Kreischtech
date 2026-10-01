@@ -10,3 +10,14 @@ test('cloud pilot reserves before sending, survives restart, limits attempts and
  let c=cloudAdapter(options);try{await c.analyze(Buffer.from('x'),'','prompt',{});c.close();c=cloudAdapter(options);assert.equal(c.status().remaining_attempts,4);for(let i=0;i<4;i++)await c.analyze(Buffer.from('x'),'','prompt',{});await assert.rejects(c.analyze(Buffer.from('x'),'','prompt',{}),e=>e.status===429);assert.equal(calls,5);}finally{c.close();rmSync(dir,{recursive:true,force:true});}
 });
 test('network uncertainty keeps a reservation and does not retry',async()=>{const dir=mkdtempSync(join(tmpdir(),'jobscopes-cloud-'));let calls=0;const c=cloudAdapter({dataDir:dir,unlock:async()=> 'fake',prepare:async()=> 'fake',request:async()=>{calls++;throw Error('network');}});try{await assert.rejects(c.analyze(Buffer.from('x'),'','prompt',{}),e=>e.status===503);assert.equal(calls,1);assert.equal(c.status().remaining_attempts,4);}finally{c.close();rmSync(dir,{recursive:true,force:true});}});
+
+test('authorized limit increase preserves prior usage across restart',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'jobscopes-allowance-'));
+ const options={dataDir:dir,unlock:async()=> 'fake',prepare:async()=> 'fake',request:async()=>{throw Error('simulated request failure');}};
+ let c=cloudAdapter({...options,maxAttempts:2});
+ try{
+  for(let i=0;i<2;i++)await assert.rejects(c.analyze(Buffer.from('x'),'','',{}));
+  assert.equal(c.status().remaining_attempts,0);c.close();
+  c=cloudAdapter({...options,maxAttempts:22});assert.equal(c.status().remaining_attempts,20);
+ }finally{c.close();rmSync(dir,{recursive:true,force:true});}
+});
