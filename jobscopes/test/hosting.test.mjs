@@ -31,7 +31,12 @@ test('shared links open only the public entry document; cross-site APIs and writ
   const r=await request(path);assert.equal(r.status,200);assert.match(r.body,/ContractorSight/);
  }
  for(const path of ['/api/account/session','/api/projects','/api/photos/example','/accounts.js'])assert.equal((await request(path)).status,403);
- for(const extra of [{host:'other.test'},{'x-forwarded-proto':'http'},{'sec-fetch-mode':'cors'},{'sec-fetch-dest':'iframe'}])assert.equal((await request('/','GET',extra)).status,403);
+ for(const extra of [{host:'other.test'},{'x-forwarded-proto':'http'}])assert.equal((await request('/','GET',extra)).status,403);
+ // Some embedded checkout browsers omit navigation metadata on the return.
+ const returnHeaders={...headers,origin:'https://checkout.stripe.com'};
+ delete returnHeaders['sec-fetch-mode'];delete returnHeaders['sec-fetch-dest'];
+ assert.doesNotThrow(()=>accessPolicy('https://example.test').guard({method:'GET',url:'/?stripe_session=cs_test_example',headers:returnHeaders}));
+ assert.throws(()=>accessPolicy('https://example.test').guard({method:'GET',url:'/api/billing',headers:returnHeaders}));
  assert.equal((await request('/','POST')).status,403);
  assert.equal((await request('/api/account/login','POST',{origin:'https://other.test'})).status,403);
 });

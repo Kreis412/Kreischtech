@@ -1,10 +1,11 @@
 // Hosted mode assumes a private application port behind a TLS-terminating proxy.
 import { guardLocalRequest } from './security.mjs';
-// Only the public entry document may be opened from another website or message.
+// The entry document contains no account data. Allow external checkout returns
+// even when an embedded browser omits Fetch Metadata headers. Authenticated APIs
+// still enforce origin checks, and CSP prevents embedding the entry in frames.
 export function isPublicEntryNavigation(req) {
  const path=(req.url || '').split('?')[0];
- return req.method==='GET' && (path==='/' || path==='/index.html') &&
-  req.headers['sec-fetch-mode']==='navigate' && req.headers['sec-fetch-dest']==='document';
+ return req.method==='GET' && (path==='/' || path==='/index.html');
 }
 export function accessPolicy(publicOrigin = '') {
  if (!publicOrigin) return {hosted:false,guard:guardLocalRequest};
