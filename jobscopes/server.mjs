@@ -1,4 +1,6 @@
 import {stripeBilling} from './stripe-billing.mjs';
+import {aiBudget} from './ai-budget.mjs';
+import {runUnmetered} from './paid-usage.mjs';
 import { prepareHostedPhoto } from './hosted-photo.mjs';
 import { cloudAdapter, CLOUD_MODEL } from './cloud-analysis.mjs';
 import { existsSync } from 'node:fs';
@@ -18,9 +20,22 @@ async function json(req) {
   try{const b=JSON.parse(Buffer.concat(chunks));if(!b || typeof b!=='object' || Array.isArray(b)) fail(400,'Expected an object.');return b;}
   catch(e){if(e.status)throw e;fail(400,'Invalid JSON.');}
 }
-export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode='',billingOptions={}}={}) {
-  mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null}),workspaces=new Map();const cloud=policy.hosted?(process.env.OPENAI_API_KEY?cloudAdapter({dataDir,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:Number(process.env.AI_PILOT_MAX_ATTEMPTS||0)}):null):(existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null);
-  const billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:process.env.STRIPE_TEST_BILLING==='1',...billingOptions});
+export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode='',billingOptions={},cloudRequest=fetch}={}) {
+  mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing;
+  const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>billing?.hasPaidCompany(company)?1:Infinity}),workspaces=new Map();
+  const live=process.env.STRIPE_LIVE_BILLING==='1';
+  billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount});
+  const budget=billing.live&&policy.hosted&&process.env.OPENAI_API_KEY?aiBudget(dataDir,{monthlyUsd:25}):null;
+  const cloud=policy.hosted?(process.env.OPENAI_API_KEY?cloudAdapter({dataDir,request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:Number(process.env.AI_PILOT_MAX_ATTEMPTS||0),budget,enforcePilotLimit:true}):null):(existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null);
+  const paidCloud=budget?cloudAdapter({dataDir:join(dataDir,'paid-ai'),request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:0,budget}):null;
+  function companyCloud(company){
+   if(!cloud)return null;
+   const chosen=()=>billing.hasPaidCompany(company)?paidCloud:cloud;
+   const requireCloud=()=>chosen()||fail(503,'Paid AI is not configured. Contact support.');
+   return {status:()=>billing.hasPaidCompany(company)?{mode:'paid',remaining_attempts:budget?.status().paused?0:billing.balance(company),analysis_balance:billing.balance(company),joe_balance:billing.balance(company,'joe'),paused:budget?.status().paused??true}:cloud.status(),
+    analyze:(...args)=>requireCloud().analyze(...args),chat:(...args)=>requireCloud().chat(...args),
+    runSaved:(...args)=>(billing.hasPaidCompany(company)?billing.runSaved(company):runUnmetered)(...args)};
+  }
   const server=createServer(async(req,res)=>{
     const send=(status,value,type='application/json')=>{
       res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','Content-Security-Policy':"default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"});
@@ -32,7 +47,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         // Machine callback: same host/TLS checks, authenticated by Stripe's raw-body signature.
         // All browser-facing writes still require their normal Origin/session checks.
         policy.guard({method:'GET',url:req.url,headers:req.headers,socket:req.socket});
-        if(!billing.ready)fail(503,'Test billing is not configured.');
+        if(!billing.ready)fail(503,'Billing is not configured.');
         let size=0;const chunks=[];
         for await(const chunk of req){size+=chunk.length;if(size>262144)fail(413,'Webhook is too large.');chunks.push(chunk);}
         await billing.webhook(Buffer.concat(chunks),req.headers['stripe-signature']);return send(200,{received:true});
@@ -49,7 +64,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
       if(url.pathname==='/api/billing'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,billing.status(session));}
       if(url.pathname.startsWith('/api/billing/')){
-        if(!billing.ready)fail(503,'Test billing is not configured.');
+        if(!billing.ready)fail(503,'Billing is not configured.');
         if(req.method!=='POST')fail(405,'Method not allowed.');
         const b=await json(req);
         if(url.pathname==='/api/billing/checkout')return send(200,await billing.checkout(session,b.plan));
@@ -64,13 +79,13 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(!['GET','HEAD'].includes(req.method) && session.role==='Viewer' && !(url.pathname==='/api/joe'&&req.method==='POST')) fail(403,'Viewer access is read-only. Ask your company owner to change your role.');
       // Company identity comes only from the authenticated session, never request data.
       let workspace=workspaces.get(session.company_id);
-      if(!workspace){workspace=createApp({dataDir:join(dataDir,'companies',session.company_id),cloud,requestGuard:policy.guard,joeOptions:policy.hosted?{model:CLOUD_MODEL,provider:cloud?'OpenAI cloud':'Cloud unavailable',generate:cloud?(messages,context,key)=>cloud.chat(messages,context,session.company_id+':'+key):async()=>{throw Object.assign(new Error('Hosted Joe is not configured. The owner needs to connect the cloud service.'),{status:503});}}:{}});workspaces.set(session.company_id,workspace);}
+      if(!workspace){const scopedCloud=companyCloud(session.company_id);workspace=createApp({dataDir:join(dataDir,'companies',session.company_id),cloud:scopedCloud,requestGuard:policy.guard,joeOptions:policy.hosted?{model:CLOUD_MODEL,provider:scopedCloud?'OpenAI cloud':'Cloud unavailable',runSaved:scopedCloud?.runSaved||runUnmetered,generate:scopedCloud?(messages,context,key)=>scopedCloud.chat(messages,context,session.company_id+':'+key):async()=>{throw Object.assign(new Error('Hosted Joe is not configured. The owner needs to connect the cloud service.'),{status:503});}}:{}});workspaces.set(session.company_id,workspace);}
       req.jobscopesActor={id:session.user_id,name:session.name,role:session.role};
       workspace.emit('request',req,res);
     } catch(e){if(!res.headersSent)send(e.status||500,{error:e.status?e.message:'Request failed. Please try again.'});}
   });
   server.requestTimeout=120000;
-  server.on('close',()=>{for(const workspace of workspaces.values())workspace.emit('close');auth.close();cloud?.close();billing.close();});
+  server.on('close',()=>{for(const workspace of workspaces.values())workspace.emit('close');auth.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){

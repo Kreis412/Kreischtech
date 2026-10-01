@@ -10,7 +10,7 @@ const email=s=>typeof s==='string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.
 const password=s=>typeof s==='string' && s.length>=16 && s.length<=256 ? s : fail(400,'Use a password of 16–256 characters.');
 const kdf={N:32768,r:8,p:1,maxmem:64*1024*1024};
 const SESSION_MS=8*60*60*1000;
-export function accounts(dataDir,{secureCookies=false,registrationCode=null}={}) {
+export function accounts(dataDir,{secureCookies=false,registrationCode=null,seatLimit=()=>Infinity}={}) {
   const db=new DatabaseSync(join(dataDir,'accounts.sqlite'));
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,salt TEXT NOT NULL,password_hash TEXT NOT NULL);
@@ -26,6 +26,8 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null}={})
     CREATE INDEX IF NOT EXISTS sessions_membership ON sessions(company_id,user_id);
     CREATE INDEX IF NOT EXISTS audit_company ON audit(company_id,id);`);
   function transaction(fn) {db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}
+  const memberCount=company=>db.prepare('SELECT count(*) n FROM memberships WHERE company_id=?').get(company).n;
+  const checkSeat=company=>{if(memberCount(company)>=seatLimit(company))fail(409,'Solo includes one user. Contact support before adding another member.');};
   const audit=(company,user,action)=>db.prepare('INSERT INTO audit(company_id,actor_id,action,created_at) VALUES(?,?,?,?)').run(company,user,action,new Date().toISOString());
   function limit(key) {
     const now=Date.now();db.prepare('DELETE FROM attempts WHERE expires<?').run(now);
@@ -111,6 +113,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null}={})
         const inv=db.prepare('SELECT * FROM invites WHERE token_hash=? AND expires>?').get(hash(String(b.code)),Date.now());
         if(!inv || inv.email!==s.email) fail(400,'Invitation is invalid, expired, or for another email.');
         if(db.prepare('SELECT 1 FROM memberships WHERE user_id=? AND company_id=?').get(s.user_id,inv.company_id)) fail(409,'Already a member of this company.');
+        checkSeat(inv.company_id);
         db.prepare('INSERT INTO memberships VALUES(?,?,?)').run(s.user_id,inv.company_id,inv.role);
         db.prepare('DELETE FROM invites WHERE token_hash=?').run(hash(b.code));audit(inv.company_id,s.user_id,'invitation.accepted');
       });send(200,{saved:true});return true;
@@ -120,6 +123,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null}={})
     }
     if(req.method==='POST' && path==='/api/account/invites') {
       requireOwner(s);const b=await json(req),mail=email(b.email);if(!['Manager','Viewer'].includes(b.role)) fail(400,'Choose Manager or Viewer.');
+      checkSeat(s.company_id);
       const code=randomBytes(32).toString('base64url');db.prepare('INSERT INTO invites VALUES(?,?,?,?,?)').run(hash(code),s.company_id,mail,b.role,Date.now()+48*60*60*1000);audit(s.company_id,s.user_id,'invitation.created');
       send(201,{code,expires_in_hours:48});return true;
     }
@@ -138,5 +142,5 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null}={})
     }
     fail(404,'Account action not found.');
   }
-  return {session,handle,close:()=>db.close()};
+  return {session,handle,memberCount,close:()=>db.close()};
 }

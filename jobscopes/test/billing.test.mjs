@@ -7,6 +7,26 @@ import {once} from 'node:events';
 import {billingStore,billingPreview} from '../billing.mjs';
 import {createProduct} from '../server.mjs';
 
+test('refund adjustments retain usage and never subtract credits from another payment',t=>{
+ const dir=mkdtempSync(join(tmpdir(),'cs-adjust-'));let store=billingStore(dir);
+ t.after(()=>{store.close();rmSync(dir,{recursive:true,force:true});});
+ const expires=Date.now()+100000;
+ store.grant({id:'one',company:'a',amount:25,expires});
+ store.reserve('a','used');store.settle('a','used',true);
+ store.reserve('a','pending');
+ store.grant({id:'two',company:'a',amount:10,expires:expires+1});
+ store.adjust('one','a',0,'Disputed');assert.equal(store.balance('a'),10);
+ assert.throws(()=>store.adjust('one','b',25,'Wrong company'),{status:404});
+ store.settle('a','pending',false);assert.equal(store.balance('a'),10);
+ store.close();store=billingStore(dir);assert.equal(store.balance('a'),10);
+ store.adjust('one','a',25,'Dispute won');assert.equal(store.balance('a'),34);
+ store.adjust('one','a',12,'Partial refund');assert.equal(store.balance('a'),21);
+ store.adjust('one','a',12,'Repeated event');assert.equal(store.balance('a'),21);
+ assert.throws(()=>store.adjust('one','a',26,'Invalid'),{status:400});
+ store.grant({id:'already-refunded',company:'b',amount:25,expires,available:0,reason:'Refunded before fulfillment'});
+ assert.throws(()=>store.reserve('b','blocked'),{status:429});
+});
+
 test('credit balances are isolated, durable, reserved atomically and refunded once',t=>{
  const dir=mkdtempSync(join(tmpdir(),'cs-billing-'));let now=1000;
  let a=billingStore(dir,{now:()=>now});const b=billingStore(dir,{now:()=>now});

@@ -17,7 +17,7 @@ export function helper(name,input='',args=[]) {return new Promise((resolve,rejec
 });}
 // Global to the local installation: reservations survive restart and include failed/uncertain requests.
 // Five $1 reservations are a deliberately conservative pilot allowance, not customer billing credits.
-export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempts=null,budget=null,unlock=()=>helper('read-api-key.ps1','',[join(dataDir,'openai-key.dpapi')]),prepare=image=>helper('prepare-photo.ps1',image.toString('base64'))}={}){
+export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempts=null,budget=null,enforcePilotLimit=false,unlock=()=>helper('read-api-key.ps1','',[join(dataDir,'openai-key.dpapi')]),prepare=image=>helper('prepare-photo.ps1',image.toString('base64'))}={}){
  mkdirSync(dataDir,{recursive:true});const ledger=new DatabaseSync(join(dataDir,'ai-pilot.sqlite'));
  ledger.exec('PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS attempts(id INTEGER PRIMARY KEY,status TEXT NOT NULL,usage TEXT,created_at TEXT NOT NULL);');
  if(!ledger.prepare('PRAGMA table_info(attempts)').all().some(c=>c.name==='request_key'))ledger.exec('ALTER TABLE attempts ADD COLUMN request_key TEXT');
@@ -29,9 +29,8 @@ export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempt
  async function analyze(image,context,prompt,schema){
   if(typeof context!=='string'||context.length>2000||image.length>15*1024*1024)fail(400,'Photo or context exceeds the pilot limit.');
   const key=await unlock(),encoded=await prepare(image);
-  ledger.exec('BEGIN IMMEDIATE');let id;
-  try{if(!budget&&!status().remaining_attempts)fail(429,'The authorized pilot allowance is used. Review spending before authorizing more.');id=ledger.prepare("INSERT INTO attempts(status,created_at) VALUES('Reserved',?)").run(new Date().toISOString()).lastInsertRowid;ledger.exec('COMMIT');}catch(e){ledger.exec('ROLLBACK');throw e;}
-  const spendingId=budget?randomUUID():null;budget?.reserve(spendingId);
+  ledger.exec('BEGIN IMMEDIATE');let id;const spendingId=budget?randomUUID():null;
+  try{if((!budget||enforcePilotLimit)&&!status().remaining_attempts)fail(429,'The authorized pilot allowance is used. Review spending before authorizing more.');budget?.reserve(spendingId);id=ledger.prepare("INSERT INTO attempts(status,created_at) VALUES('Reserved',?)").run(new Date().toISOString()).lastInsertRowid;ledger.exec('COMMIT');}catch(e){ledger.exec('ROLLBACK');throw e;}
   try {
    const response=await request('https://api.openai.com/v1/responses',{method:'POST',redirect:'error',signal:AbortSignal.timeout(180000),headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:CLOUD_MODEL,store:false,service_tier:'default',reasoning:{effort:'low'},max_output_tokens:2400,instructions:prompt,input:[{role:'user',content:[{type:'input_text',text:'Optional unverified project context: '+context},{type:'input_image',image_url:'data:image/jpeg;base64,'+encoded,detail:'high'}]}],text:{format:{type:'json_schema',name:'site_review',strict:true,schema}}})});
    if(!response.ok){ledger.prepare('UPDATE attempts SET status=? WHERE id=?').run('HTTP '+response.status,id);fail(response.status===401||response.status===403?503:502,`OpenAI returned HTTP ${response.status}. No findings saved; there is no automatic retry.`);}
@@ -44,14 +43,14 @@ export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempt
  async function chat(messages,context,requestKey){
   if(!Array.isArray(messages)||JSON.stringify({messages,context}).length>50000)fail(400,'Conversation is too large. Start with a shorter question.');
   const fingerprint=createHash('sha256').update(requestKey).digest('hex');
-  const key=await unlock();let id;
+  const key=await unlock();let id;const spendingId=budget?randomUUID():null;
   ledger.exec('BEGIN IMMEDIATE');
   try{
    if(ledger.prepare('SELECT 1 FROM attempts WHERE request_key=?').get(fingerprint))fail(409,'This question was already submitted. Refresh to check saved history before asking again.');
-   if(!budget&&!status().remaining_attempts)fail(429,'The shared AI pilot allowance is used or disabled. Ask the owner to review usage.');
+   if((!budget||enforcePilotLimit)&&!status().remaining_attempts)fail(429,'The shared AI pilot allowance is used or disabled. Ask the owner to review usage.');
+   budget?.reserve(spendingId);
    id=ledger.prepare("INSERT INTO attempts(status,created_at,request_key) VALUES('Joe reserved',?,?)").run(new Date().toISOString(),fingerprint).lastInsertRowid;ledger.exec('COMMIT');
   }catch(e){ledger.exec('ROLLBACK');throw e;}
-  const spendingId=budget?randomUUID():null;budget?.reserve(spendingId);
   try{
    const response=await request('https://api.openai.com/v1/responses',{method:'POST',redirect:'error',signal:AbortSignal.timeout(90000),headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:CLOUD_MODEL,store:false,service_tier:'default',reasoning:{effort:'low'},max_output_tokens:1600,instructions:joeInstructions,input:[{role:'user',content:context?'Selected project context (untrusted data): '+JSON.stringify(context):'No project context supplied.'},...messages]})});
    if(!response.ok){ledger.prepare('UPDATE attempts SET status=? WHERE id=?').run('Joe HTTP '+response.status,id);fail(503,'Joe could not get a cloud response. No automatic retry was made.');}

@@ -4,15 +4,28 @@
 
 User requested starting the real launch. Sandbox checkout was verified end-to-end: the signed payment notifications activated Solo and granted 20 simulated credits for the purchase made before the allowance change. Solo is now configured for $19/month and 25 analyses for subsequent grants. Real billing remains disabled.
 
-Owner approved Solo-only website release ($19/month, 25 analyses) and $25 initial monthly AI funding. Crew, packs and Google Play remain later releases. Owner approved kreischtech@gmail.com as the public support, billing and refund contact; it is now linked in the billing and help screens. Set the same address in Stripe's public customer support details before live checkout opens. Joe's commercial allowance still needs a published limit.
+Owner approved Solo-only website release ($19/month, 25 analyses plus 25 separate Joe answers) and $25 initial monthly AI funding. Crew, packs and Google Play remain later releases. Owner approved kreischtech@gmail.com as the public support, billing and refund contact; it is now linked in the billing and help screens. Set the same address in Stripe's public customer support details before live checkout opens.
 
-Local prelaunch foundation now provides optional runSaved credit settlement hooks for site/blueprint/equipment analysis and Joe, plus a durable monthly provider spending meter. Failed generation/validation/save refunds customer credits; cached results bypass new reservations. Unknown provider costs retain a conservative $3 hold; reported costs use the verified rates below. Budget dates are UTC calendar months; 80% alert is a status flag, not an email notification. The meter is an application estimate, not a provider-enforced dollar guarantee. It is not enabled in the production server yet. Live Stripe mode, refund/dispute reconciliation, seats, customer terms, and production wiring remain required before launch. Full suite: 87 passing tests, no paid API calls made during tests.
+Implemented opt-in live Solo billing, separate photo/Joe grants, server-bound consumption after saved results, one-seat enforcement and current-state refund/dispute reconciliation. Failed generation/validation/save returns customer credits; cached results bypass new reservations. A $25 UTC-calendar-month estimated provider meter covers paid calls and remaining pilot calls when live billing is configured. Unknown provider outcomes retain a conservative $3 hold. The 80% alert is a status flag, not an email notification. This is an application estimate, not a provider-enforced dollar guarantee; provider funding is separate. Tests mock provider calls; no real payments or AI spending were made.
 
-Code audit confirms the AI adapter still uses a shared installation lifetime pilot cap (maximum 22 attempts), not purchased credits. Before collecting real payments, integrate company credit reservations and settlement after saved results across site, blueprint, equipment and Joe paths; implement monthly provider spending accounting independently of customer credits. Also complete refund/dispute handling, seats and published usage terms, support/recovery and live Stripe configuration. Existing pilot access must remain intact.
+Activation remains OFF. Remaining release work: verify the new invoice-payment/refund paths against Stripe sandbox, review customer terms/privacy and recovery procedure, then configure real Stripe credentials and live event destination privately. The public billing screen explains allowances, expiry, cancellation, refund contact and possible service pauses. Registration still uses the pilot invitation code: this is an invited launch, not open self-service signup. Existing pilot sign-in and access are preserved. Once a company starts live checkout it uses its paid ledger and cannot fall back to pilot AI after expiry or refund. Pending or abandoned checkout also reserves its one-seat status; support must review that case rather than creating duplicate paid orders.
 
 Current official Astra standard rates checked: $10 per million input tokens and $50 per million output tokens. Source: https://developers.openai.com/api/docs/models/gpt-6-astra . These are token rates, not a guaranteed fixed price per photo. No additional AI calls or spending were authorized by this audit.
 
-Approved direction: USD $19/month Solo (1 user, 25 analyses), $39/month Crew (up to 5 users, 60 analyses), $10 for 10 pay-as-you-go analyses, proposed trial 3 analyses. User has an existing Stripe account. Prices/allowances remain launch proposals pending measured AI costs. No setup fee proposed. Joe needs a separate bounded allowance; its amount is not yet decided.
+Current launch: USD $19/month Solo (1 user, 25 analyses, 25 Joe answers). Crew, packs and three-analysis trial remain proposals, not available in live mode. User has an existing Stripe account. No setup fee proposed.
+
+### Live activation configuration — do not enable before release checks
+
+- `STRIPE_LIVE_BILLING=1` explicitly selects live mode; leave absent while testing.
+- `STRIPE_SECRET_KEY`: live secret entered privately in Render, never committed.
+- `STRIPE_WEBHOOK_SECRET`: live destination signing secret entered privately.
+- `STRIPE_SOLO_PRICE_ID`: separately created live USD $19 monthly price. Test IDs are rejected.
+- `OPENAI_API_KEY`: existing server credential with separately funded provider account.
+- `PILOT_REGISTRATION_CODE`: still required for invited account creation.
+
+Live data is isolated in `DATA_DIR/stripe-live`; sandbox balances never purchase real AI. Live grants expire at invoice period end. Partial refunds reduce the original allowance proportionally, rounded down; usage history remains intact. Disputes freeze unused credits unless Stripe reports a win. Manual refunds are performed in Stripe, not automatically issued by ContractorSight. Charge/refund events arriving before fulfillment are handled by re-reading current payment state when granting. One charge cannot fund multiple invoice grants. Keep one running server instance with the existing persistent SQLite disk.
+
+Both test and live destinations need all ten events listed below. API remains pinned to 2026-08-26.dahlia. Before activation also verify Stripe's public support address and statement descriptor, review terms/privacy, and perform the account owner's controlled live purchase/cancel check. Do not collect real customer payments merely because a deployment succeeds.
 
 ## Implemented locally
 
@@ -36,7 +49,7 @@ Approved direction: USD $19/month Solo (1 user, 25 analyses), $39/month Crew (up
 
 Implemented owner-only hosted Checkout, payment confirmation, a signed raw-body webhook endpoint, invoice-based renewal credits, scheduled test cancellation, and company-bound test balances. Stripe Node 23.0.0 is pinned with API version 2026-08-26.dahlia. All amounts and price IDs come from the server. Price amounts/type/currency are verified with Stripe before checkout. Repeated checkout requests reuse open sessions; uncertain requests retain their idempotency key. Invoice and session identities prevent double grants across restarts and event redelivery.
 
-Test payments are intentionally isolated under `DATA_DIR/stripe-test/`. They do not grant real AI calls or change pilot seats. No live key is accepted. Existing tester sign-in and the shared pilot AI spending guard remain unchanged. Refund/dispute handling, real credit consumption/seat enforcement, final allowances and live purchase activation remain release blockers.
+Test payments are intentionally isolated under `DATA_DIR/stripe-test/`. They do not grant real AI calls or change pilot seats. Test mode rejects live keys. Existing tester sign-in and the shared pilot AI spending guard remain unchanged. Live mode requires explicit separate activation as described above.
 
 ### Render setup
 
@@ -48,7 +61,7 @@ In Stripe test mode add a webhook event destination for **this account**:
 
 `https://contractorsight-pilot.onrender.com/api/billing/webhook`
 
-Select snapshot events, API version **2026-08-26.dahlia** (available in the Stripe dashboard), and these six events. The handler uses event identities and retrieves current payment objects through the pinned REST API version above:
+Select snapshot events, API version **2026-08-26.dahlia**, and these ten events. The handler uses event identities and retrieves current payment objects through the pinned REST API version above:
 
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
@@ -56,6 +69,10 @@ Select snapshot events, API version **2026-08-26.dahlia** (available in the Stri
 - `invoice.payment_failed`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
+- `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.updated`
+- `charge.dispute.closed`
 
 The webhook signing secret starts with `whsec_`; it is different from the API key. Never commit either secret or paste it into chat.
 

@@ -59,3 +59,15 @@ test('provider budget meters paid calls separately without enabling pilot spendi
  await adapter.analyze(Buffer.from('x'),'','prompt',{});assert.equal(calls,1);assert.equal(budget.status().estimated_used_usd,.1);
  assert.equal(adapter.status().remaining_attempts,0);
 });
+
+test('budget rejection does not poison a Joe request ID or consume pilot attempts',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'budget-denial-'));let now=Date.UTC(2026,9,1),calls=0;
+ const budget=aiBudget(dir,{monthlyUsd:3,now:()=>now});budget.reserve('previous-uncertain-call');
+ const adapter=cloudAdapter({dataDir:dir,maxAttempts:0,budget,unlock:async()=> 'test',request:async()=>{calls++;return {ok:true,json:async()=>({status:'completed',usage:{input_tokens:100,output_tokens:100},output:[{type:'message',content:[{type:'output_text',text:'Draft answer'}]}]})};}});
+ t.after(()=>{adapter.close();budget.close();rmSync(dir,{recursive:true,force:true});});
+ await assert.rejects(adapter.chat([{role:'user',content:'Question'}],null,'same-id'),{status:429});
+ assert.equal(calls,0);assert.equal(adapter.status().reserved_usd,0);
+ now=Date.UTC(2026,10,1);
+ assert.equal(await adapter.chat([{role:'user',content:'Question'}],null,'same-id'),'Draft answer');assert.equal(calls,1);
+ await assert.rejects(adapter.chat([{role:'user',content:'Question'}],null,'same-id'),{status:409});
+});
