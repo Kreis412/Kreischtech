@@ -36,7 +36,7 @@ In Stripe test mode add a webhook event destination for **this account**:
 
 `https://contractorsight-pilot.onrender.com/api/billing/webhook`
 
-Select snapshot events, API version **2026-09-30.endive**, and these six events:
+Select snapshot events, API version **2026-08-26.dahlia** (available in the Stripe dashboard), and these six events. The handler uses event identities and retrieves current payment objects through the pinned REST API version above:
 
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
