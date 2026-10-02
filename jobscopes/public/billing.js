@@ -1,5 +1,14 @@
+// Distribution hint controls presentation only; it never grants account access or credits.
+export function isPlayDistribution(search,referrer,storage){
+ const incoming=new URLSearchParams(search).get('distribution')==='google-play'||referrer.startsWith('android-app://com.kreischtech.contractorsight');
+ try{if(incoming)storage.setItem('cs-play-distribution','1');return incoming||storage.getItem('cs-play-distribution')==='1';}catch{return incoming;}
+}
 export async function billingView(host,{api,esc}){
  const data=await api('/api/billing');
+ if(isPlayDistribution(location.search,document.referrer,sessionStorage)){
+  host.innerHTML=(host.querySelector('.settings-nav')?.outerHTML||'')+`<section class="page-heading"><div><h1>Plan &amp; usage</h1><p>Android internal test</p></div></section><section class="panel"><h2>Your AI allowance</h2><p>${esc(data.balance??0)} photo analyses remaining</p><p>${esc(data.joe_balance??0)} Joe answers remaining</p><p>Google Play subscriptions are being prepared. Purchases are unavailable in this test version. Your existing account access still applies.</p></section><section class="panel"><h2>Support</h2><p>For account or existing subscription help, contact <a href="mailto:kreischtech@gmail.com">kreischtech@gmail.com</a>.</p></section>`;
+  return;
+ }
  const money=cents=>new Intl.NumberFormat('en-US',{style:'currency',currency:data.currency,maximumFractionDigits:0}).format(cents/100);
  const testing=data.mode==='stripe-test';
  const live=data.mode==='stripe-live',active=data.subscriptions?.find(s=>!['canceled','incomplete_expired'].includes(s.status));

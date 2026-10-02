@@ -57,6 +57,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(req.headers['sec-fetch-site']==='cross-site' && !(policy.hosted && isPublicEntryNavigation(req))) fail(403,'Cross-site requests are blocked.');
       if(await auth.handle(req,url,json,send,res)) return;
       if(req.method==='GET') {
+        if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
         const files={'terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
         if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);

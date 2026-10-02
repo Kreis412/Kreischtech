@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kreischtech.contractorsight",
+      "sha256_cert_fingerprints": ["35:F6:B6:C1:8A:F6:62:37:10:90:76:C6:60:F3:C4:7A:E7:BA:39:96:49:A2:09:E5:59:E1:2E:FB:A2:50:12:ED"]
+    }
+  }
+]
