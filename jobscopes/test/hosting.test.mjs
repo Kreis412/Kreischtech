@@ -27,7 +27,7 @@ test('shared links open only the public entry document; cross-site APIs and writ
    let body='';res.on('data',c=>body+=c);res.on('end',()=>resolve({status:res.statusCode,body}));
   });req.on('error',reject);req.end();
  });
- for(const path of ['/','/index.html','/?from=invitation']){
+ for(const path of ['/','/index.html','/?from=invitation','/privacy.html','/terms.html','/refunds.html','/delete-account.html']){
   const r=await request(path);assert.equal(r.status,200);assert.match(r.body,/ContractorSight/);
  }
  for(const path of ['/api/account/session','/api/projects','/api/photos/example','/accounts.js'])assert.equal((await request(path)).status,403);
@@ -37,7 +37,7 @@ test('shared links open only the public entry document; cross-site APIs and writ
  delete returnHeaders['sec-fetch-mode'];delete returnHeaders['sec-fetch-dest'];
  assert.doesNotThrow(()=>accessPolicy('https://example.test').guard({method:'GET',url:'/?stripe_session=cs_test_example',headers:returnHeaders}));
  assert.throws(()=>accessPolicy('https://example.test').guard({method:'GET',url:'/api/billing',headers:returnHeaders}));
- assert.equal((await request('/','POST')).status,403);
+ for(const path of ['/','/delete-account.html','/privacy.html'])assert.equal((await request(path,'POST')).status,403);
  assert.equal((await request('/api/account/login','POST',{origin:'https://other.test'})).status,403);
 });
 test('hosted gateway supports shared project access with Secure sessions',async t=>{

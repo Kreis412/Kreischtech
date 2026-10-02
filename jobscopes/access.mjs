@@ -5,7 +5,7 @@ import { guardLocalRequest } from './security.mjs';
 // still enforce origin checks, and CSP prevents embedding the entry in frames.
 export function isPublicEntryNavigation(req) {
  const path=(req.url || '').split('?')[0];
- return req.method==='GET' && (path==='/' || path==='/index.html');
+ return req.method==='GET' && ['/', '/index.html', '/privacy.html', '/terms.html', '/refunds.html', '/delete-account.html', '/.well-known/assetlinks.json'].includes(path);
 }
 export function accessPolicy(publicOrigin = '') {
  if (!publicOrigin) return {hosted:false,guard:guardLocalRequest};
