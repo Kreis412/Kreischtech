@@ -7,7 +7,7 @@ test('measurement editor is brought into view and two taps produce a saved label
  let scrolls=0,focus=0,form,written;
  const nodes={'[data-measure-heading]':{focus:()=>focus++},'[data-measure-status]':{},'[data-measure-list]':{},'[data-cancel-line]':{setAttribute:()=>{}},canvas:{style:{},setPointerCapture:()=>{},hasPointerCapture:()=>false,getContext:()=>({}),focus:()=>{},getBoundingClientRect:()=>({left:10,top:20,width:200,height:100})}};
  const host={isConnected:true,scrollIntoView:()=>scrolls++,querySelector:s=>nodes[s]};
- const ui=measurementUI({api:async()=>({lines:[],revision:0}),write:async(path,method,body)=>{written={path,method,body};return {lines:body.lines,revision:1};},esc:String,field:()=>'',selectField:()=>'',openForm:(...args)=>form=args,toast:()=>{}});
+ const ui=measurementUI({api:async()=>written?{lines:written.body.lines,revision:written.body.revision+1}:{lines:[],revision:0},write:async(path,method,body)=>{written={path,method,body};return {lines:body.lines,revision:1};},esc:String,field:()=>'',selectField:()=>'',openForm:(...args)=>form=args,toast:()=>{}});
  try{
   await ui.mount(host,'project',{id:'photo',name:'Test photo'});
   assert.ok(scrolls>=1);assert.equal(focus,1);
@@ -22,5 +22,16 @@ test('measurement editor is brought into view and two taps produce a saved label
   assert.equal(written.body.lines[1].from,'');assert.equal(written.body.lines[1].distance,'10 ft');
   assert.equal(written.path,'/api/projects/project/photos/photo/measurements');assert.equal(written.method,'PUT');
   assert.deepEqual(written.body.lines[0],{from:'Corner',to:'Stake',distance:'20 ft',kind:'Measured',a:{x:.1,y:.2},b:{x:.8,y:.8}});
+  await host.onclick({target:{closest:()=>({hasAttribute:k=>k==='data-close-measure'})}});
+  await ui.mount(host,'project',{id:'photo',name:'Test photo'});
+  await host.onclick({target:{closest:()=>({hasAttribute:k=>k==='data-remove-line',dataset:{removeLine:'0'}})}});
+  assert.equal(written.body.lines.length,1);assert.equal(written.body.lines[0].distance,'10 ft');
+  await host.onclick({target:{closest:()=>({hasAttribute:k=>k==='data-undo-lines'})}});
+  assert.equal(written.body.lines.length,2);
+  await host.onclick({target:{closest:()=>({hasAttribute:k=>k==='data-clear-lines'})}});
+  assert.equal(written.body.lines.length,0);
+  await host.onclick({target:{closest:()=>({hasAttribute:k=>k==='data-undo-lines'})}});
+  assert.equal(written.body.lines.length,2);
+  assert.match(nodes['[data-measure-list]'].innerHTML,/20 ft/);
  }finally{globalThis.document=oldDocument;globalThis.Image=oldImage;}
 });
