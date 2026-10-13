@@ -1,3 +1,4 @@
+import {customerPortal} from './customer-portal.mjs';
 import {stripeBilling} from './stripe-billing.mjs';
 import {aiBudget} from './ai-budget.mjs';
 import {runUnmetered} from './paid-usage.mjs';
@@ -22,6 +23,7 @@ async function json(req) {
 }
 export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode='',billingOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing;
+  const portal=customerPortal(dataDir);
   const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>billing?.hasPaidCompany(company)?1:Infinity}),workspaces=new Map();
   const live=process.env.STRIPE_LIVE_BILLING==='1';
   billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount});
@@ -60,10 +62,22 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(url.pathname==='/delete-account.html') return send(200,readFileSync(join(ROOT,'public/delete-account.html')),'text/html; charset=utf-8');
         if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        const files={'terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
+        const files={'customer.html':'text/html','customer.js':'text/javascript','customer-admin.js':'text/javascript','terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
         if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);
       }
+      if(url.pathname==='/api/customer/messages'){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,portal.customerMessage(req.headers['x-customer-token'],(await json(req)).message));}
+      if(url.pathname==='/api/customer' || url.pathname.startsWith('/api/customer/photos/')){
+        if(req.method!=='GET')fail(405,'Customer access is read-only.');
+        const photo=url.pathname==='/api/customer'?null:url.pathname.slice('/api/customer/photos/'.length);
+        const value=portal.read(req.headers['x-customer-token'],photo);
+        if(photo){res.writeHead(200,{'Content-Type':value.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(Buffer.from(value.content));}
+        return send(200,value);
+      }
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      const messageMatch=url.pathname.match(/^\/api\/projects\/([\w-]+)\/customer-portal\/messages$/);
+      if(messageMatch){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,portal.contractorMessage(session,messageMatch[1],(await json(req)).message));}
+      const customerMatch=url.pathname.match(/^\/api\/projects\/([\w-]+)\/customer-portal$/);
+      if(customerMatch){const p=customerMatch[1];if(req.method==='GET')return send(200,portal.status(session,p));if(req.method==='POST')return send(200,portal.publish(session,p,await json(req)));if(req.method==='DELETE')return send(200,portal.revoke(session,p));fail(405,'Method not allowed.');}
       if(url.pathname==='/api/billing'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,billing.status(session));}
       if(url.pathname.startsWith('/api/billing/')){
         if(!billing.ready)fail(503,'Billing is not configured.');
@@ -87,7 +101,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
     } catch(e){if(!res.headersSent)send(e.status||500,{error:e.status?e.message:'Request failed. Please try again.'});}
   });
   server.requestTimeout=120000;
-  server.on('close',()=>{for(const workspace of workspaces.values())workspace.emit('close');auth.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();});
+  server.on('close',()=>{for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){

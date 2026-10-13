@@ -1,3 +1,4 @@
+import {customerAdmin} from '/customer-admin.js';
 import {billingView,isPlayDistribution} from '/billing.js';
 import { api } from '/api.js';
 import { normalizeCurrency } from '/currency.js';
@@ -80,10 +81,11 @@ function projectView() {
     <div class="detail-layout"><section><div class="tabs" role="tablist" aria-label="Project details"><button id="discoveries-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'discoveries'}" data-action="discoveries">Discovery Log <span class="count">${p.discoveries.length}</span></button><button id="photos-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'photos'}" data-action="photos">Site photos <span class="count">${p.photos.length}</span></button></div><div id="tab-content" role="tabpanel" aria-labelledby="${tab}-tab"></div></section>
     <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Photo analysis creates draft findings in Project workspace for human review.</p></section></aside></div>`;
   const tabs = main.querySelector('.tabs');
+  if(['Owner','Manager'].includes(document.body.dataset.role)) tabs.insertAdjacentHTML('beforeend', '<button id="customer-tab" role="tab" aria-controls="tab-content" aria-selected="'+(tab==='customer')+'" data-action="customer">Customer portal</button>');
   tabs.insertAdjacentHTML('afterbegin', `<button id="operations-tab" role="tab" aria-controls="tab-content" aria-selected="${tab==='operations'}" data-action="operations">Project workspace</button>`);
   tabs.insertAdjacentHTML('beforeend', `<button id="materials-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'materials'}" data-action="materials">Materials & estimate</button>`);
   tabs.querySelectorAll('[role=tab]').forEach(button => button.tabIndex = button.getAttribute('aria-selected') === 'true' ? 0 : -1);
-  if(tab === 'operations') operations.mount($('#tab-content'),p).catch(error=>{const area=$('#tab-content');if(area&&current?.id===p.id&&tab==='operations')area.innerHTML=`<p class="error" role="alert">${esc(error.message)}</p><button data-action="operations">Try again</button>`;}); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
+  if(tab==='customer') customerAdmin($('#tab-content'),p,{api,esc}).catch(e=>{if(current?.id===p.id&&tab==='customer')$('#tab-content').textContent=e.message;}); else if(tab === 'operations') operations.mount($('#tab-content'),p).catch(error=>{const area=$('#tab-content');if(area&&current?.id===p.id&&tab==='operations')area.innerHTML=`<p class="error" role="alert">${esc(error.message)}</p><button data-action="operations">Try again</button>`;}); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
 }
 function discoveryView() {
   const entries = current.discoveries;
@@ -245,6 +247,7 @@ main.addEventListener('click', e => {
     case 'edit-discovery': discoveryForm(button.dataset.id); break;
     case 'refresh': load(); break;
     case 'clear-filters': filters = { query: '', status: '', type: '' }; dashboard(); break;
+    case 'customer': tab='customer'; projectView(); break;
     case 'operations': tab = 'operations'; projectView(); $('#operations-tab').focus(); break;
     case 'discoveries': tab = 'discoveries'; projectView(); $('#discoveries-tab').focus(); break;
     case 'photos': tab = 'photos'; projectView(); $('#photos-tab').focus(); break;
