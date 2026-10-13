@@ -1,4 +1,4 @@
-import {billingView} from '/billing.js';
+import {billingView,isPlayDistribution} from '/billing.js';
 import { api } from '/api.js';
 import { normalizeCurrency } from '/currency.js';
 import { pendingPhotos,queuePhoto,sendPhoto,discardPhoto } from '/photo-queue.js';
@@ -62,6 +62,8 @@ function dashboard() {
     <section><div class="section-head"><h2>Project board <span class="count">${projects.length}</span></h2><button class="subtle" data-action="refresh">↻ Refresh</button></div>
     <div class="filters"><label class="search filter-label">Search projects<input id="search" type="search" placeholder="Search projects, clients, or addresses…" value="${esc(filters.query)}"></label><label class="filter-label">Filter by status<select id="status-filter"><option value="">All statuses</option>${options(statuses, filters.status)}</select></label><label class="filter-label">Filter by project type<select id="type-filter"><option value="">All project types</option>${options(types, filters.type)}</select></label></div><div id="project-list"></div></section>
     <div class="field-note"><span class="note-icon" aria-hidden="true">↳</span><div><strong>Good projects start with good observations.</strong>Capture what you find on site. Turn the unknowns into a clear next step.</div></div>`;
+  const playBuild=isPlayDistribution(location.search,document.referrer,sessionStorage);
+  main.querySelector('.page-heading').insertAdjacentHTML('afterend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, view the available Solo subscription, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
   renderCards();
   $('#search').addEventListener('input', e => { filters.query = e.target.value; renderCards(); });
   $('#status-filter').addEventListener('change', e => { filters.status = e.target.value; renderCards(); });
@@ -193,7 +195,7 @@ function discoveryForm(id) {
 }
 
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/billing','Plan & usage'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/billing','Plans & upgrades'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView() {
   const dark=document.documentElement.dataset.theme==='dark';
