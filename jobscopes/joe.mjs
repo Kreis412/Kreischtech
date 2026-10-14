@@ -20,6 +20,12 @@ export async function askLocalJoe(messages,context,request=fetch){
 export function joeStore(db,{generate=askLocalJoe,measurements=null,model=MODEL,provider='Local Ollama',runSaved=runUnmetered}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS joe_exchanges(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,project_id TEXT NOT NULL,question TEXT NOT NULL,answer TEXT NOT NULL,context_json TEXT NOT NULL,model TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(user_id,id));CREATE INDEX IF NOT EXISTS joe_user_project ON joe_exchanges(user_id,project_id,created_at);`);
  const history=(uid,pid)=>db.prepare('SELECT id,question,answer,model,created_at,context_json FROM joe_exchanges WHERE user_id=? AND project_id=? ORDER BY rowid DESC LIMIT 12').all(uid,pid).reverse().map(({context_json,...r})=>({...r,used_project_context:context_json!=='null'}));
+ function historyPage(uid,pid,before=''){
+  if(before&&!/^[1-9]\d{0,14}$/.test(before))fail(400,'Invalid conversation page.');
+  const rows=db.prepare('SELECT rowid AS cursor,id,question,answer,model,created_at,context_json FROM joe_exchanges WHERE user_id=? AND project_id=? AND rowid<? ORDER BY rowid DESC LIMIT 13').all(uid,pid,before?Number(before):Number.MAX_SAFE_INTEGER);
+  const more=rows.length>12;const page=rows.slice(0,12);
+  return {history:page.reverse().map(({cursor,context_json,...r})=>({...r,used_project_context:context_json!=='null'})),next_before:more?String(page[0].cursor):null};
+ }
  function context(pid){
   const project=db.prepare('SELECT name,type,status,notes FROM projects WHERE id=?').get(pid);
   const read=kind=>db.prepare('SELECT id,data,revision FROM operations_records WHERE project_id=? AND kind=? ORDER BY updated_at DESC LIMIT 8').all(pid,kind).map(r=>({...JSON.parse(r.data),id:r.id,revision:r.revision}));
@@ -28,14 +34,14 @@ export function joeStore(db,{generate=askLocalJoe,measurements=null,model=MODEL,
  return {async handle(req,url,project,json,send){
   if(url.pathname!=='/api/joe')return false;
   const actor=req.jobscopesActor;if(!actor?.id)fail(401,'Sign in to use Joe.');
-  if(req.method==='GET'){const pid=url.searchParams.get('project_id')||'';if(pid)project(pid);send(200,{model,provider,history:history(actor.id,pid)});return true;}
+  if(req.method==='GET'){const pid=url.searchParams.get('project_id')||'';if(pid)project(pid);send(200,{model,provider,...historyPage(actor.id,pid,url.searchParams.get('before')||'')});return true;}
   if(req.method!=='POST')fail(405,'Method not allowed.');
   const b=await json(req);if(typeof b.question!=='string'||!b.question.trim()||b.question.length>3000)fail(400,'Enter a question of 1–3000 characters.');
   if(typeof b.request_id!=='string'||!/^[-\w]{10,80}$/.test(b.request_id))fail(400,'Invalid request identifier.');
   const pid=b.project_id||'';if(typeof pid!=='string')fail(400,'Choose a project.');if(pid)project(pid);
   if(typeof b.include_context!=='boolean')fail(400,'Choose whether to include project context.');
   const previous=db.prepare('SELECT * FROM joe_exchanges WHERE id=?').get(b.request_id);
-  if(previous){if(previous.user_id!==actor.id||previous.project_id!==pid||previous.question!==b.question.trim())fail(409,'Request identifier already used.');send(200,{answer:previous.answer,reused:true,history:history(actor.id,pid)});return true;}
+  if(previous){if(previous.user_id!==actor.id||previous.project_id!==pid||previous.question!==b.question.trim())fail(409,'Request identifier already used.');send(200,{answer:previous.answer,reused:true,...historyPage(actor.id,pid)});return true;}
   // When context is off, do not resend previous answers that could contain project data.
   const past=history(actor.id,pid).filter(r=>b.include_context||!r.used_project_context).slice(-3);
   const messages=past.flatMap(r=>[{role:'user',content:r.question.slice(0,3000)},{role:'assistant',content:r.answer.slice(0,4000)}]);messages.push({role:'user',content:b.question.trim()});
@@ -45,6 +51,6 @@ export function joeStore(db,{generate=askLocalJoe,measurements=null,model=MODEL,
   db.prepare('INSERT INTO joe_exchanges VALUES(?,?,?,?,?,?,?,?)').run(b.request_id,actor.id,pid,b.question.trim(),answer,JSON.stringify(snapshot),model,new Date().toISOString());
   return answer;
   });
-  send(201,{answer,reused:false,history:history(actor.id,pid)});return true;
+  send(201,{answer,reused:false,...historyPage(actor.id,pid)});return true;
  }};
 }

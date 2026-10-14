@@ -18,3 +18,22 @@ test('Joe provider uses localhost, unloads model and releases busy lock after fa
  await assert.rejects(askLocalJoe([],null,async()=>{throw Error('offline');}),e=>e.status===503);const again=acquireLocalModel();again();
  await assert.rejects(askLocalJoe([],null,async()=>({ok:true,json:async()=>({capabilities:['completion'],remote_host:'cloud'})})),e=>e.status===503);
 });
+
+test('Joe retains completed-project conversations after restart and pages all older messages privately',async()=>{
+ const {mkdtempSync,rmSync}=await import('node:fs');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const dir=mkdtempSync(join(tmpdir(),'joe-history-'));let db;
+ try{
+  const file=join(dir,'workspace.sqlite');db=new DatabaseSync(file);joeStore(db);
+  const insert=db.prepare('INSERT INTO joe_exchanges VALUES(?,?,?,?,?,?,?,?)');
+  for(let i=1;i<=29;i++)insert.run('saved-'+i,'owner','completed-job','Question '+i,'Answer '+i,'null','test','2026-10-14T00:00:00Z');
+  insert.run('other-user','other','completed-job','Private','Private','null','test','2026-10-14T00:00:00Z');
+  insert.run('other-job','owner','other-job','Private','Private','null','test','2026-10-14T00:00:00Z');
+  db.close();db=new DatabaseSync(file);let generations=0;const joe=joeStore(db,{generate:async()=>{generations++;return 'New answer';}});
+  async function read(before='',uid='owner') {let result;await joe.handle({method:'GET',jobscopesActor:{id:uid}},new URL('http://localhost/api/joe?project_id=completed-job&before='+before),()=>({status:'Completed'}),async()=>{},(status,body)=>{assert.equal(status,200);result=body;});return result;}
+  const newest=await read();assert.equal(newest.history.length,12);assert.equal(newest.history.at(-1).question,'Question 29');
+  const middle=await read(newest.next_before);const oldest=await read(middle.next_before);
+  assert.equal(oldest.next_before,null);assert.deepEqual([...oldest.history,...middle.history,...newest.history].map(r=>r.question),Array.from({length:29},(_,i)=>'Question '+(i+1)));
+  assert.equal((await read(newest.next_before,'stranger')).history.length,0);
+  await assert.rejects(read('bad'),e=>e.status===400);assert.equal(generations,0);
+ }finally{db?.close();rmSync(dir,{recursive:true,force:true});}
+});
