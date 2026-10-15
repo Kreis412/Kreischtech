@@ -8,6 +8,17 @@ export function customerPortal(dataDir,{now=()=>Date.now()}={}){
  const db=new DatabaseSync(join(dataDir,'customer-portals.sqlite'));
  db.exec('PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS portals(company TEXT, project TEXT, token_hash TEXT UNIQUE, expires INTEGER, data TEXT, PRIMARY KEY(company,project))');
  db.exec('CREATE TABLE IF NOT EXISTS portal_messages(id INTEGER PRIMARY KEY,company TEXT,project TEXT,sender TEXT,body TEXT,created INTEGER)');
+ db.exec('CREATE TABLE IF NOT EXISTS company_profiles(company TEXT PRIMARY KEY,data TEXT NOT NULL)');
+ const profileData=c=>JSON.parse(db.prepare('SELECT data FROM company_profiles WHERE company=?').get(c)?.data||'{"enabled":false,"name":"","description":"","photos":[]}');
+ function profile(s,b){
+  owner(s);if(b===undefined)return profileData(s.company_id);
+  if(typeof b.enabled!=='boolean'||typeof b.name!=='string'||b.name.length>160||typeof b.description!=='string'||b.description.length>1200||(b.enabled&&!b.name.trim()))fail(400,'Enter a business name and a description of up to 1,200 characters.');
+  if(!Array.isArray(b.photos)||b.photos.length>6||b.photos.some(p=>!p||typeof p!=='object')||new Set(b.photos.map(p=>p.id)).size!==b.photos.length)fail(400,'Choose up to six different gallery photos.');
+  const path=join(dataDir,'companies',s.company_id,'contractoros.sqlite');if(!existsSync(path))fail(400,'Create a project and upload photos first.');
+  const w=new DatabaseSync(path,{readOnly:true});try{for(const p of b.photos){if(typeof p.id!=='string'||typeof p.caption!=='string'||p.caption.length>160||!w.prepare('SELECT 1 FROM photos WHERE id=?').get(p.id))fail(400,'Choose photos from your company and captions up to 160 characters.');}}finally{w.close();}
+  const data={enabled:b.enabled,name:b.name.trim(),description:b.description.trim(),photos:b.photos.map(p=>({id:p.id,caption:p.caption.trim()}))};
+  db.prepare('INSERT INTO company_profiles VALUES(?,?) ON CONFLICT(company) DO UPDATE SET data=excluded.data').run(s.company_id,JSON.stringify(data));return data;
+ }
  const messages=(c,p)=>db.prepare('SELECT sender,body,created FROM portal_messages WHERE company=? AND project=? ORDER BY id DESC LIMIT 100').all(c,p).reverse();
  function addMessage(c,p,sender,body){if(typeof body!=='string'||!body.trim()||body.length>2000)fail(400,'Write a message of 1 to 2,000 characters.');if(db.prepare('SELECT count(*) n FROM portal_messages WHERE company=? AND project=? AND created>?').get(c,p,now()-60000).n>=5)fail(429,'Please wait a minute before sending more messages.');db.prepare('INSERT INTO portal_messages(company,project,sender,body,created) VALUES(?,?,?,?,?)').run(c,p,sender,body.trim(),now());return {sent:true};}
  function source(company,project,fn){
@@ -38,9 +49,9 @@ export function customerPortal(dataDir,{now=()=>Date.now()}={}){
  }
  function read(token,photo){
   const r=lookup(token),data=JSON.parse(r.data);
-  return source(r.company,r.project,w=>{if(!photo)return {...data,messages:messages(r.company,r.project)};if(!data.photos.includes(photo))fail(404,'Photo not shared.');const image=w.prepare('SELECT content,mime FROM photos WHERE project_id=? AND id=?').get(r.project,photo);if(!image)fail(404,'Photo unavailable.');return image;});
+  return source(r.company,r.project,w=>{const profile=profileData(r.company);const company_profile=profile.enabled?{name:profile.name,description:profile.description,photos:profile.photos.filter(p=>w.prepare('SELECT 1 FROM photos WHERE id=?').get(p.id))}:null;if(!photo)return {...data,company_profile,messages:messages(r.company,r.project)};const gallery=company_profile?.photos.some(p=>p.id===photo);if(!data.photos.includes(photo)&&!gallery)fail(404,'Photo not shared.');const image=gallery?w.prepare('SELECT content,mime FROM photos WHERE id=?').get(photo):w.prepare('SELECT content,mime FROM photos WHERE project_id=? AND id=?').get(r.project,photo);if(!image)fail(404,'Photo unavailable.');return image;});
  }
  function customerMessage(token,body){const r=lookup(token);return source(r.company,r.project,()=>addMessage(r.company,r.project,'Customer',body));}
  function contractorMessage(s,p,body){owner(s);return source(s.company_id,p,()=>addMessage(s.company_id,p,'Contractor',body));}
- return {status,publish,revoke,read,customerMessage,contractorMessage,close:()=>db.close()};
+ return {status,publish,revoke,read,profile,customerMessage,contractorMessage,close:()=>db.close()};
 }

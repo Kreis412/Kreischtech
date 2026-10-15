@@ -20,6 +20,18 @@ test('customer publication isolates tenants, allowlists fields and photos, keeps
   const publicData=portal.read(first.token);assert.equal(publicData.title,'Addition');assert.equal(publicData.cost,undefined);assert.equal(publicData.notes,undefined);assert.equal(publicData.company,undefined);
   assert.deepEqual([...portal.read(first.token,'yes').content],[1,2]);assert.throws(()=>portal.read(first.token,'no'),e=>e.status===404);
   assert.equal(portal.status(other,'p').active,false);
+  const profile={enabled:true,name:'My company',description:'Past work',photos:[{id:'no',caption:'Finished deck'}],cost:100};
+  assert.equal(portal.read(first.token).company_profile,null);
+  assert.throws(()=>portal.profile(viewer,profile),e=>e.status===403);
+  assert.throws(()=>portal.profile(viewer),e=>e.status===403);
+  assert.throws(()=>portal.profile(owner,{...profile,photos:[{id:'missing',caption:''}]}),e=>e.status===400);
+  assert.throws(()=>portal.profile(owner,{...profile,photos:[null]}),e=>e.status===400);
+  assert.throws(()=>portal.profile(owner,{...profile,photos:Array(7).fill({id:'no',caption:''})}),e=>e.status===400);
+  portal.profile(owner,profile);assert.equal(portal.profile(other).enabled,false);
+  assert.deepEqual(portal.read(first.token).company_profile,{name:'My company',description:'Past work',photos:[{id:'no',caption:'Finished deck'}]});
+  assert.deepEqual([...portal.read(first.token,'no').content],[3]);
+  portal.profile(owner,{...profile,enabled:false});assert.equal(portal.read(first.token).company_profile,null);assert.throws(()=>portal.read(first.token,'no'),e=>e.status===404);
+  portal.profile(owner,{...profile,photos:[]});assert.throws(()=>portal.read(first.token,'no'),e=>e.status===404);
   assert.equal(portal.publish(owner,'p',{...body,update:'Updated',photos:[]}).token,null);
   assert.equal(portal.read(first.token).update,'Updated');assert.throws(()=>portal.read(first.token,'yes'),e=>e.status===404);
   portal.customerMessage(first.token,'Hello');portal.contractorMessage(owner,'p','Reply');assert.deepEqual(portal.read(first.token).messages.map(m=>m.sender),['Customer','Contractor']);assert.equal(portal.status(other,'p').messages.length,0);
