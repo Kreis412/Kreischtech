@@ -12,9 +12,9 @@ import {createProduct} from '../server.mjs';
 const key='sk_test_fake_for_unit_tests',secret='whsec_fake_for_unit_tests';
 const owner={user_id:'userA',company_id:'companyA',role:'Owner'},other={company_id:'companyB',role:'Owner'};
 function fixture(t,live=false){
- const prices=live?{solo:'price_live_solo'}:TEST_PRICES;
+ const prices=live?{solo:'price_live_solo',analysis_1:'price_live_analysis_1',analysis_5:'price_live_analysis_5',analysis_12:'price_live_analysis_12'}:TEST_PRICES;
  const dir=mkdtempSync(join(tmpdir(),'cs-stripe-')),sdk=new Stripe(key),sessions=new Map(),subs=new Map(),invoices=new Map();let creates=0,wrongPrice=false;
- const client={webhooks:sdk.webhooks,prices:{retrieve:async price=>{const plan=Object.keys(prices).find(k=>prices[k]===price);return {id:price,livemode:live,active:true,currency:'usd',billing_scheme:'per_unit',unit_amount:wrongPrice?1:{solo:1900,crew:3900,pack:1000}[plan],type:plan==='pack'?'one_time':'recurring',recurring:plan==='pack'?null:{interval:'month',interval_count:1}};}},
+ const client={webhooks:sdk.webhooks,prices:{retrieve:async price=>{const plan=Object.keys(prices).find(k=>prices[k]===price);return {id:price,livemode:live,active:true,currency:'usd',billing_scheme:'per_unit',unit_amount:wrongPrice?1:{solo:1900,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan],type:(plan==='pack'||plan.startsWith('analysis_'))?'one_time':'recurring',recurring:(plan==='pack'||plan.startsWith('analysis_'))?null:{interval:'month',interval_count:1}};}},
   checkout:{sessions:{create:async params=>{creates++;const sid=(live?'cs_live_':'cs_test_')+creates;const value={id:sid,livemode:live,status:'open',url:'https://checkout.stripe.com/c/pay/'+sid,created:Math.floor(Date.now()/1000),...params,line_items:{data:[{price:{id:params.line_items[0].price},quantity:1}],has_more:false}};sessions.set(sid,value);return value;},retrieve:async sid=>structuredClone(sessions.get(sid))}},
   subscriptions:{retrieve:async sid=>structuredClone(subs.get(sid)),update:async(sid,params)=>Object.assign(subs.get(sid),params)},invoices:{retrieve:async iid=>structuredClone(invoices.get(iid))}};
  const charges=new Map(),intents=new Map(),disputes=new Map();
@@ -24,7 +24,7 @@ function fixture(t,live=false){
  client.invoicePayments={list:async({invoice})=>{const inv=invoices.get(invoice),pid=inv.payment_intent;return {has_more:false,data:[{invoice,livemode:live,status:'paid',currency:'usd',amount_paid:inv.amount_paid,payment:{type:'payment_intent',payment_intent:pid}}]};}};
  const options={dataDir:dir,origin:'https://example.test',secretKey:live?'sk_live_fake_for_unit_tests':key,mode:live?'live':'test',prices,webhookSecret:secret,enabled:true,client};let billing=stripeBilling(options);
  t.after(()=>{billing.close();rmSync(dir,{recursive:true,force:true});});
- function pay(sid,plan){const s=sessions.get(sid);Object.assign(s,{status:'complete',payment_status:'paid',currency:'usd',amount_total:{solo:1900,crew:3900,pack:1000}[plan]});if(plan!=='pack'){
+ function pay(sid,plan){const s=sessions.get(sid);Object.assign(s,{status:'complete',payment_status:'paid',currency:'usd',amount_total:{solo:1900,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan]});if((plan!=='pack'&&!plan.startsWith('analysis_'))){
   s.subscription='sub_'+sid;s.invoice='in_'+sid;const end=Math.floor(Date.now()/1000)+30*86400;
   subs.set(s.subscription,{id:s.subscription,livemode:live,metadata:s.metadata,status:'active',items:{data:[{price:{id:prices[plan]},quantity:1,current_period_end:end}]},cancel_at_period_end:false});
   invoices.set(s.invoice,{id:s.invoice,livemode:live,status:'paid',currency:'usd',amount_paid:s.amount_total,billing_reason:'subscription_create',parent:{subscription_details:{subscription:s.subscription}},lines:{has_more:false,data:[{pricing:{price_details:{price:prices[plan]}},quantity:1,period:{end}}]}});
@@ -180,3 +180,21 @@ test('gateway accepts signed machine callback without browser origin but keeps b
  assert.equal(await send('/api/billing/checkout',signature),403);
 });
 
+
+
+test('all live packs grant only purchased analyses once, persist, and refund unused credits',async t=>{
+ const f=fixture(t,true);
+ for(const [index,pack,count] of [[1,'analysis_1',1],[2,'analysis_5',5],[3,'analysis_12',12]]){
+  await f.billing.checkout(owner,pack,'2026-10-01');
+  const s=f.pay('cs_live_'+index,pack);assert.equal(s.mode,'payment');
+  await f.billing.confirm(owner,s.id);await f.event('checkout.session.completed',{id:s.id});
+ }
+ assert.equal(f.billing.balance('companyA'),18);assert.equal(f.billing.balance('companyA','joe'),0);
+ assert.equal(f.billing.status(owner).carryover_balance,18);
+ await f.billing.runSaved('companyA')('analysis','pack-use',async()=>({saved:true}));
+ assert.equal(f.billing.balance('companyA'),17);
+ f.restart();assert.equal(f.billing.status(owner).carryover_balance,17);
+ f.charges.get('ch_cs_live_3').amount_refunded=1099;
+ await f.event('charge.refunded',{id:'ch_cs_live_3'});
+ assert.ok(f.billing.balance('companyA')<=6);
+});

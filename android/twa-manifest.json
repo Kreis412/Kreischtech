@@ -20,13 +20,13 @@
     "path": "upload.keystore",
     "alias": "contractorsight"
   },
-  "appVersionName": "0.1.2",
-  "appVersionCode": 3,
+  "appVersionName": "0.1.3",
+  "appVersionCode": 4,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://contractorsight-pilot.onrender.com/manifest.webmanifest",
   "fallbackType": "customtabs",
-  "features": {},
+  "features": {"playBilling":{"enabled":true}},
   "alphaDependencies": {
     "enabled": false
   },

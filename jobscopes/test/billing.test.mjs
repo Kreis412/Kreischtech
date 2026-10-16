@@ -74,3 +74,18 @@ test('pricing preview needs sign-in and cannot accept purchases or company grant
  assert.equal((await fetch(base+'/api/billing',{method:'POST',headers,body:JSON.stringify({company:'other',plan:'crew',credits:999})})).status,405);
  assert.equal((await fetch(base+'/billing.js')).status,200);
 });
+
+
+test('purchased pack credits survive monthly expiry and expiring credits are spent first',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'cs-carryover-'));let clock=100;
+ const credits=billingStore(dir,{now:()=>clock});
+ try{
+  credits.grant({id:'pack',company:'a',amount:12,expires:Number.MAX_SAFE_INTEGER});
+  credits.grant({id:'month',company:'a',amount:2,expires:200});
+  credits.reserve('a','first');credits.settle('a','first',true);
+  assert.equal(credits.carryoverBalance('a'),12);
+  clock=1000000000000;assert.equal(credits.balance('a'),12);
+  credits.reserve('a','failed');credits.settle('a','failed',false);
+  assert.equal(credits.carryoverBalance('a'),12);
+ }finally{credits.close();rmSync(dir,{recursive:true,force:true});}
+});

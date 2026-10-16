@@ -2,6 +2,13 @@ import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
 
 // Prices are proposals until payment verification, seat enforcement and store billing ship.
+// Non-expiring grants sort after monthly allowances, so expiring credits are used first.
+export const CARRYOVER_EXPIRY=Number.MAX_SAFE_INTEGER;
+export const ANALYSIS_PACKS=Object.freeze([
+ Object.freeze({id:'analysis_1',name:'1 photo analysis',price_cents:99,interval:'pack',analyses:1}),
+ Object.freeze({id:'analysis_5',name:'5 photo analyses',price_cents:499,interval:'pack',analyses:5}),
+ Object.freeze({id:'analysis_12',name:'12 photo analyses',price_cents:1099,interval:'pack',analyses:12})
+]);
 export const PLANS = Object.freeze([
  Object.freeze({id:'solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25}),
  Object.freeze({id:'crew',name:'Crew',price_cents:3900,interval:'month',seats:5,analyses:60}),
@@ -29,6 +36,7 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
  function grants(company,kind){return db.prepare(`SELECT g.*, coalesce(a.available,g.amount) allowance,
  (SELECT count(*) FROM credit_requests r WHERE r.grant_id=g.id AND r.state!='refunded') used
  FROM credit_grants g LEFT JOIN credit_adjustments a ON a.grant_id=g.id WHERE company=? AND kind=? AND expires>? ORDER BY expires,id`).all(company,kind,now());}
+ function carryoverBalance(company){return grants(company,'analysis').filter(g=>g.expires===CARRYOVER_EXPIRY).reduce((n,g)=>n+Math.max(0,g.allowance-g.used),0);}
  function balance(company,kind='analysis'){
   identifier(company);return grants(company,kind).reduce((n,g)=>n+Math.max(0,g.allowance-g.used),0);
  }
@@ -77,7 +85,7 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
   });
  }
  const grantInfo=(id,company)=>db.prepare('SELECT amount,expires,kind FROM credit_grants WHERE id=? AND company=?').get(id,company);
- return {balance,grant,reserve,settle,adjust,grantInfo,close:()=>db.close()};
+ return {balance,carryoverBalance,grant,reserve,settle,adjust,grantInfo,close:()=>db.close()};
 }
 
 export function billingPreview(){return {mode:'pilot',checkout_enabled:false,currency:'USD',plans:PLANS,trial_analyses:3,

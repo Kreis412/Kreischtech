@@ -3,7 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {billingStore, billingPreview, PLANS} from './billing.mjs';
+import {billingStore, billingPreview, PLANS, ANALYSIS_PACKS, CARRYOVER_EXPIRY} from './billing.mjs';
 import {invoiceCharge,intentCharge,chargeAllowance} from './payment-entitlement.mjs';
 import {paidUsage} from './paid-usage.mjs';
 
@@ -13,7 +13,7 @@ export const STRIPE_EVENTS=['checkout.session.completed','checkout.session.async
 export const TERMS_VERSION='2026-10-01';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const id=value=>typeof value==='string'?value:value?.id;
-const planFor=key=>PLANS.find(p=>p.id===key)||fail(400,'Choose a valid plan.');
+const planFor=key=>[...PLANS,...ANALYSIS_PACKS].find(p=>p.id===key)||fail(400,'Choose a valid plan.');
 const validId=(value,prefix)=>typeof value==='string'&&new RegExp('^'+prefix+'[A-Za-z0-9_]+$').test(value)&&value.length<=250;
 const safeUrl=(value,hostname)=>{try{const u=new URL(value);if(u.protocol==='https:'&&u.hostname===hostname&&!u.username&&!u.password)return u.href;}catch{}fail(502,'Stripe returned an unexpected checkout address.');};
 
@@ -44,20 +44,22 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  const owner=s=>{if(s.role!=='Owner')fail(403,'Only the company owner can manage billing.');};
  const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}};
  async function external(fn){try{return await fn();}catch(e){if(e.status)throw e;fail(502,'Stripe could not complete this step. No automatic retry was made.');}}
+ const packConfigured=p=>validId(prices[p.id],'price_');
  function status(session){
   const subscriptions=db.prepare('SELECT plan,status,period_end,cancel_at_end FROM subscriptions WHERE company=? ORDER BY period_end DESC').all(session.company_id);
-  if(live)return {mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:[{...planFor('solo'),joe_answers:25}],balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
+  if(live)return {mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:[{...planFor('solo'),joe_answers:25}],packs:ANALYSIS_PACKS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),carryover_balance:credits.carryoverBalance(session.company_id),balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
   return {...billingPreview(),mode:'stripe-test',checkout_enabled:session.role==='Owner',message:'Test checkout only. No real money is collected, and test credits do not increase your paid AI allowance.',test_balance:credits.balance(session.company_id),subscriptions};
  }
  async function checkout(session,key,consent){
   owner(session);const plan=planFor(key),company=session.company_id;
+  if(live&&plan.interval==='pack'&&!packConfigured(plan))fail(503,'This pack is not available yet.');
   if(live&&(consent!==TERMS_VERSION||!session.user_id))fail(400,'Please agree to the subscription terms before continuing.');
-  if(live&&(key!=='solo'||memberCount(company)!==1))fail(409,'Solo is for one user. Contact support about a company with multiple members.');
+  if(live&&((key!=='solo'&&!ANALYSIS_PACKS.some(p=>p.id===key))||memberCount(company)!==1))fail(409,'Solo is for one user. Contact support about a company with multiple members.');
   transaction(()=>{
    db.prepare('DELETE FROM checkout_locks WHERE expires<=?').run(now());
    if(db.prepare('SELECT 1 FROM checkout_locks WHERE company=?').get(company))fail(409,'Checkout is already being prepared. Please wait.');
    if(db.prepare('SELECT count(*) n FROM orders WHERE company=? AND created>?').get(company,now()-3600000).n>=10)fail(429,'Too many checkouts. Please try again in an hour.');
-   if(key!=='pack'&&db.prepare("SELECT 1 FROM subscriptions WHERE company=? AND status NOT IN ('canceled','incomplete_expired')").get(company))fail(409,'This company already has a subscription. Contact support before starting another.');
+   if(plan.interval!=='pack'&&db.prepare("SELECT 1 FROM subscriptions WHERE company=? AND status NOT IN ('canceled','incomplete_expired')").get(company))fail(409,'This company already has a subscription. Contact support before starting another.');
    db.prepare('INSERT INTO checkout_locks VALUES(?,?)').run(company,now()+120000);
   });
   try{
@@ -76,15 +78,15 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
     if(open&&!open.session&&(open.plan!==key||now()-open.created>1800000))fail(409,'A previous checkout request needs review before another can be created.');
    }
    const price=await external(()=>stripe.prices.retrieve(prices[key]));
-   if(price.livemode!==live||!price.active||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.billing_scheme!=='per_unit'||(key==='pack'?price.type!=='one_time':price.type!=='recurring'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1))fail(503,'The Stripe price does not match this plan. Ask the owner to check the catalog.');
+   if(price.livemode!==live||!price.active||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.billing_scheme!=='per_unit'||(plan.interval==='pack'?price.type!=='one_time':price.type!=='recurring'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1))fail(503,'The Stripe price does not match this plan. Ask the owner to check the catalog.');
    const order=open&&!open.session?open:{id:randomUUID(),company,plan:key,created:now()};
    if(live&&memberCount(company)!==1)fail(409,'Solo includes one user. Company membership changed while checkout was being prepared.');
    if(order!==open)db.prepare('INSERT INTO orders(id,company,plan,created) VALUES(?,?,?,?)').run(order.id,company,key,order.created);
    if(live)db.prepare('INSERT OR IGNORE INTO billing_consents VALUES(?,?,?,?,?)').run(order.id,session.user_id,company,TERMS_VERSION,now());
    const metadata={contractorsight_order:order.id};
    const result=await external(async()=>{
-    try{return await stripe.checkout.sessions.create({mode:key==='pack'?'payment':'subscription',client_reference_id:order.id,metadata,line_items:[{price:prices[key],quantity:1}],payment_method_types:['card'],expires_at:Math.floor(order.created/1000)+1860,
-     ...(key==='pack'?{}:{subscription_data:{metadata}}),success_url:origin+'/?stripe_session={CHECKOUT_SESSION_ID}#settings/billing',cancel_url:origin+'/#settings/billing'}, {idempotencyKey:'cs-'+mode+':'+order.id});}
+    try{return await stripe.checkout.sessions.create({mode:plan.interval==='pack'?'payment':'subscription',client_reference_id:order.id,metadata,line_items:[{price:prices[key],quantity:1}],payment_method_types:['card'],expires_at:Math.floor(order.created/1000)+1860,
+     ...(plan.interval==='pack'?{}:{subscription_data:{metadata}}),success_url:origin+'/?stripe_session={CHECKOUT_SESSION_ID}#settings/billing',cancel_url:origin+'/#settings/billing'}, {idempotencyKey:'cs-'+mode+':'+order.id});}
     catch(e){
      // Only retire a definitive validation rejection. Network/server/idempotency
      // errors may have created a session and must retain the original identity.
@@ -117,7 +119,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   const subscriptionId=id(invoice.parent?.subscription_details?.subscription);if(!validId(subscriptionId,'sub_'))return;
   const sub=await external(()=>stripe.subscriptions.retrieve(subscriptionId));
   const order=db.prepare('SELECT * FROM orders WHERE id=?').get(sub.metadata?.contractorsight_order||'');if(!order)return;
-  if(order.plan==='pack'||sub.livemode!==live)fail(409,'Invoice does not match a subscription.');
+  if(planFor(order.plan).interval==='pack'||sub.livemode!==live)fail(409,'Invoice does not match a subscription.');
   await refreshSubscription(subscriptionId,order);
   const lines=invoice.lines?.data||[],line=lines[0],plan=planFor(order.plan);
   if(invoice.lines?.has_more||lines.length!==1||id(line.pricing?.price_details?.price)!==prices[order.plan]||line.quantity!==1||invoice.currency!=='usd'||invoice.amount_paid!==plan.price_cents||!['subscription_create','subscription_cycle'].includes(invoice.billing_reason))fail(409,'This invoice needs manual review before granting credits.');
@@ -149,13 +151,13 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   if(result.livemode!==live||result.client_reference_id!==stored.id||result.metadata?.contractorsight_order!==stored.id)fail(409,'Checkout does not match the saved order.');
   if(result.status!=='complete'||result.payment_status!=='paid')return {confirmed:false};
   const plan=planFor(stored.plan),lines=result.line_items?.data||[];
-  if(result.line_items?.has_more||lines.length!==1||id(lines[0].price)!==prices[stored.plan]||lines[0].quantity!==1||result.amount_total!==plan.price_cents||result.currency!=='usd'||result.mode!==(stored.plan==='pack'?'payment':'subscription'))fail(409,'Payment details differ from the saved order.');
-  if(stored.plan==='pack'){
+  if(result.line_items?.has_more||lines.length!==1||id(lines[0].price)!==prices[stored.plan]||lines[0].quantity!==1||result.amount_total!==plan.price_cents||result.currency!=='usd'||result.mode!==(plan.interval==='pack'?'payment':'subscription'))fail(409,'Payment details differ from the saved order.');
+  if(plan.interval==='pack'){
    // Sandbox pack lifetime only; commercial expiry terms remain undecided.
-   const expires=(result.created+365*86400)*1000;
+   const expires=stored.plan==='pack'?(result.created+365*86400)*1000:CARRYOVER_EXPIRY;
    if(expires>now()){
-    const charge=await external(()=>intentCharge(stripe,id(result.payment_intent),plan.price_cents));
-    const adjustment=await external(()=>chargeAllowance(stripe,charge,plan.price_cents,plan.analyses));
+    const charge=await external(()=>intentCharge(stripe,id(result.payment_intent),plan.price_cents,live));
+    const adjustment=await external(()=>chargeAllowance(stripe,charge,plan.price_cents,plan.analyses,live));
     const grantId='checkout:'+sessionId;
     receipt(grantId,stored.company,charge.id,plan.price_cents,plan.analyses);
     credits.grant({id:grantId,company:stored.company,amount:plan.analyses,expires,...adjustment});
