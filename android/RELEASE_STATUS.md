@@ -46,3 +46,5 @@ Artifact: app/build/outputs/bundle/release/contractorsight-0.1.1.aab
 SHA256: 4AB9F669C879EDDB5E1046C2A849904C89695B84777D7DC4BBDC0D12769959CE
 
 Minimum SDK raised to 24 (Android 7): Play automatic protection rejected the SDK 23 upload. Rebuilt and verified with SDK 24.
+
+Version 0.1.1 was accepted into the artifact library but release validation required Billing Library 8. Superseded by versionCode 3 / 0.1.2, which includes billing:8.0.0. bundleRelease, lintRelease and signature verification passed. Purchases remain gated. SHA256: 6A79ED49842EF05425EA8F72EB150F47432D5160570AFB622CB7BC650788FB37

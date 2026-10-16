@@ -20,8 +20,8 @@
     "path": "upload.keystore",
     "alias": "contractorsight"
   },
-  "appVersionName": "0.1.1",
-  "appVersionCode": 2,
+  "appVersionName": "0.1.2",
+  "appVersionCode": 3,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://contractorsight-pilot.onrender.com/manifest.webmanifest",
