@@ -1,5 +1,10 @@
 export function joeUI({api,write,esc,openForm,field,toast}){
  let serial=0,widget;
+ let dismissedUntil=0;
+ const dismissalKey='jobscopes-joe-dismissed-until';
+ const isDismissed=()=>{try{dismissedUntil=Math.max(dismissedUntil,Number(localStorage.getItem(dismissalKey))||0);}catch{}return Date.now()<dismissedUntil;};
+ function dismissToday(){const nextDay=new Date();nextDay.setHours(24,0,0,0);dismissedUntil=nextDay.getTime();try{localStorage.setItem(dismissalKey,String(dismissedUntil));}catch{}widget?.querySelector('.joe-suggestion')?.remove();}
+ window.addEventListener('storage',event=>{if(event.key===dismissalKey&&isDismissed())widget?.querySelector('.joe-suggestion')?.remove();});
  const assistantEnabled=()=>{try{return localStorage.getItem('jobscopes-joe-enabled')!=='off';}catch{return true;}};
  const enabled=()=>{try{return localStorage.getItem('jobscopes-joe-suggestions')==='on';}catch{return false;}};
  function preference(value){try{localStorage.setItem('jobscopes-joe-suggestions',value?'on':'off');}catch{}}
@@ -7,10 +12,10 @@ export function joeUI({api,write,esc,openForm,field,toast}){
   widget?.remove();widget=null;if(!assistantEnabled())return;if(document.body.dataset.signedIn!=='true'||location.hash.startsWith('#joe'))return;
   const href=project?'#joe/'+project.id:'#joe';
   widget=document.createElement('aside');widget.className='joe-widget';widget.setAttribute('aria-label','Joe construction assistant');
-  let dismissed=false;try{dismissed=sessionStorage.getItem('joe-dismiss-'+location.hash)==='yes';}catch{}
+  const dismissed=isDismissed();
   const suggestion=project?(project.photos.length?'Review findings and decisions before turning them into assigned work.':'Capture site photos and measurements before building your estimate.'):location.hash==='#company'?'Check project updates and pending labor hours before comparing job costs.':'Need help with scope, sequencing, estimates or ContractorSight? Ask Joe.';
   widget.innerHTML=`${enabled()&&!dismissed&&!location.hash.startsWith('#joe')?`<div class="joe-suggestion"><strong>Joe’s suggestion</strong><p>${esc(suggestion)}</p><small>Workflow reminder · not an AI site assessment</small><div><button data-joe-dismiss>Dismiss</button><button data-joe-off>Turn suggestions off</button></div></div>`:''}<a class="button" href="${href}">Ask Joe</a>`;
-  widget.querySelector('[data-joe-dismiss]')?.addEventListener('click',()=>{try{sessionStorage.setItem('joe-dismiss-'+location.hash,'yes');}catch{}widget.querySelector('.joe-suggestion')?.remove();});
+  widget.querySelector('[data-joe-dismiss]')?.addEventListener('click',dismissToday);
   widget.querySelector('[data-joe-off]')?.addEventListener('click',()=>{preference(false);widgets(project);});document.body.append(widget);
  }
  function settings(host){host.innerHTML='<section class="panel"><h2>Enable Joe</h2><label><input type="checkbox" id="joe-enabled"> Enable Joe assistant</label><p>Turn off Joe to hide his floating button and suggestions and disable chat in this browser. Your saved conversations are kept.</p></section><section class="page-heading"><div><h1>Joe assistant</h1><p>Construction help for residential and commercial work.</p></div></section><section class="panel"><h2>Suggestions</h2><label><input type="checkbox" id="joe-suggestions"> Show optional workflow suggestions around ContractorSight</label><p>Off by default. Suggestions are simple page-based reminders, not background AI scans. You can dismiss them or turn them off at any time. This preference applies to this browser.</p><h2>Connection</h2><p>The chat page identifies the active provider. On this laptop Joe uses local Ollama; hosted Joe uses OpenAI when configured. Cloud questions and up to three recent exchanges are sent only when you press Ask Joe. Selected project context is included only when you check the context box. Suggestions do not make AI requests. Answers are experimental and require judgment; Joe cannot browse current codes or approve construction.</p><p>Chat history is saved per user and company in this workspace. Company database backups include chat records; owners and anyone controlling the local files may access those backups. Do not treat this as a confidential messaging channel.</p></section>';const master=host.querySelector('#joe-enabled');master.checked=assistantEnabled();master.onchange=()=>{try{localStorage.setItem('jobscopes-joe-enabled',master.checked?'on':'off');}catch{}settings(host);widgets(null);};const check=host.querySelector('#joe-suggestions');check.disabled=!assistantEnabled();check.checked=enabled();check.onchange=()=>{preference(check.checked);widgets(null);};}
