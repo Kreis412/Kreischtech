@@ -33,3 +33,16 @@ Build (PowerShell, with Java 17 and SDK paths set):
 `./gradlew.bat --no-daemon --max-workers=2 assembleDebug bundleRelease lintRelease`
 Then from repository root: `node android-tools/sign-bundle.cjs`.
 Increment versionCode for any new bundle after this upload.
+
+## October 16, 2026 — product setup prerequisite
+
+Built versionCode 2 / versionName 0.1.1 with com.android.vending.BILLING permission.
+This build unlocks Play product-catalog setup only. It does not enable purchases:
+the existing Android billing screen remains gated pending integration and verification.
+
+Validation: bundleRelease and lintRelease passed; jarsigner verified the signed bundle;
+merged release manifest confirms version 2 and BILLING permission.
+Artifact: app/build/outputs/bundle/release/contractorsight-0.1.1.aab
+SHA256: 4AB9F669C879EDDB5E1046C2A849904C89695B84777D7DC4BBDC0D12769959CE
+
+Minimum SDK raised to 24 (Android 7): Play automatic protection rejected the SDK 23 upload. Rebuilt and verified with SDK 24.

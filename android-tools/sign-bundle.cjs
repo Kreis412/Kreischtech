@@ -17,7 +17,9 @@ if(!fs.existsSync(key)){
 }
 const password=fs.readFileSync(properties,'utf8').trim().replace(/^password=/,'');
 const source=path.join(root,'app/build/outputs/bundle/release/app-release.aab');
-const target=path.join(root,'app/build/outputs/bundle/release/contractorsight-0.1.0.aab');
+const version=JSON.parse(fs.readFileSync(path.join(root,'twa-manifest.json'),'utf8')).appVersionName;
+if(!/^\d+\.\d+\.\d+$/.test(version))throw new Error('Invalid release version');
+const target=path.join(root,'app/build/outputs/bundle/release/contractorsight-'+version+'.aab');
 run('jarsigner',['-keystore',key,'-storepass:env','CS_SIGN_PASS','-keypass:env','CS_SIGN_PASS','-signedjar',target,source,'contractorsight'],{...process.env,CS_SIGN_PASS:password});
 console.log(run('jarsigner',['-verify',target]));
 console.log('Signed bundle: '+target);
