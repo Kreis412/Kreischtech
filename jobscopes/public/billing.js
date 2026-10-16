@@ -35,6 +35,13 @@ export async function billingView(host,{api,esc}){
   location.assign(url.href);
  }));
  const refresh=async path=>{await write(path,{});await billingView(host,{api,esc});};
- const sync=host.querySelector('[data-sync]');if(sync)sync.onclick=()=>action(sync,()=>refresh('/api/billing/sync'));
+ const sync=host.querySelector('[data-sync]');if(sync)sync.onclick=()=>action(sync,async()=>{
+  sync.textContent='Checking payment…';
+  try{
+   await refresh('/api/billing/sync');
+   const result=host.querySelector('#billing-message');
+   if(result){result.textContent='Payment check complete. Your current subscription and credit balances are shown above. If you just paid and they have not updated, wait a moment and check again. You do not need to pay again.';result.scrollIntoView?.({block:'center',behavior:'smooth'});}
+  }finally{sync.textContent=testing?'Check test payment':'Check payment status';}
+ });
  const cancel=host.querySelector('[data-cancel]');if(cancel)cancel.onclick=()=>action(cancel,()=>refresh('/api/billing/cancel'));
 }

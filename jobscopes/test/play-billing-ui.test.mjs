@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {playBillingView} from '../public/play-billing.js';
 import {joeUI} from '../public/joe.js';
+import {billingView} from '../public/billing.js';
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 function browser(t){const dom=new JSDOM('<body data-signed-in="true"><main></main></body>',{url:'https://example.com/#company'});for(const key of ['window','document','location','localStorage']){const old=globalThis[key];globalThis[key]=dom.window[key];t.after(()=>{if(old===undefined)delete globalThis[key];else globalThis[key]=old;});}t.after(()=>dom.window.close());return dom.window.document.querySelector('main');}
 test('Joe dismissal applies across pages and refreshes until the next local day; manual Joe remains',t=>{
@@ -26,4 +27,12 @@ test('Play UI displays store price, verifies before completing, and restores pen
 test('Play UI never offers a purchase when server or device cannot verify it',async t=>{
  const host=browser(t);await playBillingView(host,{esc,api:async()=>({ready:false,purchase_enabled:false,balance:2,joe_balance:0})});assert.equal(host.querySelector('[data-buy]'),null);
  await playBillingView(host,{esc,api:async()=>({ready:true,purchase_enabled:true,balance:2,joe_balance:0,packs:[]})});assert.equal(host.querySelector('[data-buy]'),null);assert.match(host.textContent,/latest ContractorSight app/);
+});
+
+test('payment status check displays progress and a persistent completion message',async t=>{
+ const host=browser(t),previous=globalThis.sessionStorage;globalThis.sessionStorage=window.sessionStorage;t.after(()=>{if(previous===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=previous;});
+ let finish,checks=0;const api=async path=>{if(path==='/api/billing/sync'){checks++;await new Promise(resolve=>finish=resolve);return {}; }return {mode:'stripe-live',currency:'USD',balance:0,joe_balance:0,subscriptions:[],packs:[],checkout_enabled:true};};
+ await billingView(host,{api,esc});const button=host.querySelector('[data-sync]'),pending=button.onclick();
+ assert.equal(button.disabled,true);assert.equal(button.textContent,'Checking payment…');finish();await pending;
+ assert.equal(checks,1);assert.match(host.querySelector('#billing-message').textContent,/Payment check complete/);assert.equal(host.querySelector('[data-sync]').disabled,false);
 });
