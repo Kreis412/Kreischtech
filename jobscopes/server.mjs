@@ -21,7 +21,7 @@ async function json(req) {
   try{const b=JSON.parse(Buffer.concat(chunks));if(!b || typeof b!=='object' || Array.isArray(b)) fail(400,'Expected an object.');return b;}
   catch(e){if(e.status)throw e;fail(400,'Invalid JSON.');}
 }
-export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode='',billingOptions={},cloudRequest=fetch}={}) {
+export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing;
   const portal=customerPortal(dataDir);
   const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>billing?.hasPaidCompany(company)?1:Infinity}),workspaces=new Map();
@@ -108,7 +108,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.includes('--lan')){console.error('This preview requires localhost. Hosted HTTPS access is not configured.');process.exit(1);}
   const publicOrigin=process.env.PUBLIC_ORIGIN||(process.env.RENDER==='true'?process.env.RENDER_EXTERNAL_URL:'')||'';
-  const server=createProduct({publicOrigin,registrationCode:process.env.PILOT_REGISTRATION_CODE||''}),port=Number(process.env.PORT||3200);
+  const server=createProduct({publicOrigin,registrationCode:process.env.REGISTRATION_MODE==='private'?(process.env.PILOT_REGISTRATION_CODE||''):null}),port=Number(process.env.PORT||3200);
   server.listen(port,publicOrigin?'0.0.0.0':'127.0.0.1',()=>console.log(`ContractorSight company preview: http://localhost:${port}`));
   server.on('error',e=>{console.error(e.message);process.exitCode=1;server.close();});
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{server.close();server.closeIdleConnections();});

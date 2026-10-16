@@ -52,7 +52,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
   async function handle(req,url,json,send,res) {
     const path=url.pathname;
     if(!path.startsWith('/api/account/')) return false;
-    if(req.method==='GET' && path==='/api/account/session') {const s=session(req);send(200,s?{user:{name:s.name,email:s.email},company:{id:s.company_id,name:s.company_name,role:s.role},companies:db.prepare('SELECT c.id,c.name,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? ORDER BY c.name').all(s.user_id)}:{user:null});return true;}
+    if(req.method==='GET' && path==='/api/account/session') {const s=session(req);send(200,s?{user:{name:s.name,email:s.email},company:{id:s.company_id,name:s.company_name,role:s.role},companies:db.prepare('SELECT c.id,c.name,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? ORDER BY c.name').all(s.user_id)}:{user:null,registration_requires_code:registrationCode!==null});return true;}
     if(req.method==='POST' && path==='/api/account/reset-password') {
       limit('reset:'+req.socket.remoteAddress);
       const b=await json(req),mail=email(b.email),pass=password(b.password);

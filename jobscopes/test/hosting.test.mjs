@@ -63,3 +63,26 @@ test('hosted gateway supports shared project access with Secure sessions',async 
  delete headers.cookie;r=await request('/api/account/login','POST',{email:'hosted@example.test',password:'hosted testing password 2026'});assert.equal(r.status,200);headers.cookie=r.headers.get('set-cookie').split(';')[0];
  r=await request('/api/projects/'+project.id);assert.equal(r.status,200);assert.equal((await r.json()).name,'Phone pilot fixture');
 });
+
+test('public hosted signup needs no invitation and creates isolated companies',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'contractorsight-public-signup-'));
+ const server=createProduct({dataDir:dir,publicOrigin:'https://example.test'});
+ server.listen(0,'127.0.0.1');await once(server,'listening');
+ t.after(async()=>{await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});});
+ let cookie='';
+ const request=(path,method='GET',body)=>new Promise((resolve,reject)=>{
+  const req=httpRequest({hostname:'127.0.0.1',port:server.address().port,path,method,headers:{host:'example.test','x-forwarded-proto':'https',origin:'https://example.test','content-type':'application/json',cookie}},res=>{
+   let text='';res.on('data',c=>text+=c);res.on('end',()=>resolve({status:res.statusCode,data:JSON.parse(text),cookie:res.headers['set-cookie']?.[0]?.split(';')[0]}));
+  });req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
+ });
+ assert.equal((await request('/api/account/session')).data.registration_requires_code,false);
+ const signup=email=>request('/api/account/register','POST',{email,password:'public signup test password',name:'Tester',company:'Separate company'});
+ let r=await signup('first@example.test');assert.equal(r.status,201);cookie=r.cookie;
+ const firstCompany=(await request('/api/account/session')).data.company.id;
+ r=await request('/api/projects','POST',{name:'Private job',type:'Deck',status:'Discovery'});assert.equal(r.status,201);const project=r.data;
+ await request('/api/account/logout','POST',{});cookie='';
+ r=await signup('second@example.test');assert.equal(r.status,201);cookie=r.cookie;
+ assert.notEqual((await request('/api/account/session')).data.company.id,firstCompany);
+ assert.equal((await request('/api/projects/'+project.id)).status,404);
+ assert.equal((await request('/api/account/switch','POST',{company_id:firstCompany})).status,403);
+});
