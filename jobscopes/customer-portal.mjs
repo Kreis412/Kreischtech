@@ -53,5 +53,12 @@ export function customerPortal(dataDir,{now=()=>Date.now()}={}){
  }
  function customerMessage(token,body){const r=lookup(token);return source(r.company,r.project,()=>addMessage(r.company,r.project,'Customer',body));}
  function contractorMessage(s,p,body){owner(s);return source(s.company_id,p,()=>addMessage(s.company_id,p,'Contractor',body));}
- return {status,publish,revoke,read,profile,customerMessage,contractorMessage,close:()=>db.close()};
+ function removeProject(company,project){
+  db.exec('BEGIN IMMEDIATE');try{
+   db.prepare('DELETE FROM portals WHERE company=? AND project=?').run(company,project);
+   db.prepare('DELETE FROM portal_messages WHERE company=? AND project=?').run(company,project);
+   db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e;}
+ }
+ return {status,publish,revoke,read,profile,customerMessage,contractorMessage,removeProject,close:()=>db.close()};
 }

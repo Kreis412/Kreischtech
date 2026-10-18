@@ -43,7 +43,7 @@ function imageType(bytes) {
   fail(415, 'Choose a JPEG, PNG, or WebP photo. Export HEIC photos as JPEG first.');
 }
 
-export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null, requestGuard = guardLocalRequest, joeOptions = {} } = {}) {
+export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data'), cloud = null, requestGuard = guardLocalRequest, joeOptions = {}, onProjectDeleted = () => {} } = {}) {
   mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(join(dataDir, 'contractoros.sqlite'));
   db.exec(`PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -120,6 +120,30 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
       if (match) {
         const id = match[1]; project(id);
         if (req.method === 'GET') return send(200, detail(id));
+        if (req.method === 'DELETE') {
+          if (!['Owner','Manager'].includes(req.jobscopesActor?.role || 'Owner')) fail(403,'Only owners and managers can delete projects.');
+          const b = await json(req), fresh = project(id);
+          if (b.confirm_name !== fresh.name) fail(400,'Type the project name exactly to confirm deletion.');
+          if (b.revision !== fresh.revision) fail(409,'This project changed. Refresh before deleting it.');
+          db.exec('BEGIN IMMEDIATE');
+          try {
+            db.exec('PRAGMA defer_foreign_keys=ON');
+            db.prepare('DELETE FROM photo_measurements WHERE photo_id IN (SELECT id FROM photos WHERE project_id=?)').run(id);
+            for (const table of ['estimate_sources','material_items','estimate_checks','estimate_context','estimate_snapshots','estimate_pricing','job_metrics','operations_records','photo_analyses','blueprint_analyses','photo_upload_requests','discoveries','photos','joe_exchanges']) {
+              db.prepare('DELETE FROM '+table+' WHERE project_id=?').run(id);
+            }
+            db.prepare('UPDATE cash_entries SET project_id=NULL,revision=revision+1 WHERE project_id=?').run(id);
+            for (const asset of db.prepare('SELECT id,data FROM equipment').all()) {
+              const data=JSON.parse(asset.data);
+              if(data.project_id===id){data.project_id='';if(data.status==='Assigned')data.status='Available';db.prepare('UPDATE equipment SET data=?,revision=revision+1 WHERE id=?').run(JSON.stringify(data),asset.id);}
+            }
+            db.prepare('DELETE FROM projects WHERE id=?').run(id);
+            onProjectDeleted(id);
+            db.exec('COMMIT');
+          } catch(error) {db.exec('ROLLBACK');throw error;}
+          return send(200,{deleted:true});
+        }
+
         if (req.method === 'PUT') {
           const b = await json(req);
           const result = db.prepare('UPDATE projects SET name=?, client=?, address=?, type=?, status=?, notes=?, updated_at=?, revision=revision+1 WHERE id=? AND revision=?').run(

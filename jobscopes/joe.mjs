@@ -48,6 +48,7 @@ export function joeStore(db,{generate=askLocalJoe,measurements=null,model=MODEL,
   const snapshot=pid&&b.include_context?context(pid):null;
   const answer=await runSaved('joe',actor.id+':'+b.request_id,async()=>{
   const answer=await generate(messages,snapshot,actor.id+':'+b.request_id);
+  if(pid)project(pid);
   db.prepare('INSERT INTO joe_exchanges VALUES(?,?,?,?,?,?,?,?)').run(b.request_id,actor.id,pid,b.question.trim(),answer,JSON.stringify(snapshot),model,new Date().toISOString());
   return answer;
   });

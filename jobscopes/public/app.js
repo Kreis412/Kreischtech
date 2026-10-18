@@ -82,6 +82,7 @@ function projectView() {
     <details class="panel project-guide" ${!p.photos.length && !p.discoveries.length ? 'open' : ''}><summary>New to this project? Start here</summary><p>1. Add site photos. 2. Record observations or run analysis in Project workspace. 3. Build your Materials &amp; estimate.</p><div class="upload-actions"><button data-action="photos">Add site photos</button><button data-action="materials">Build an estimate</button><a class="button" href="#help">Read the quick guide</a></div></details><nav class="upload-actions" aria-label="Quick project actions"><button class="primary" data-action="quick-camera">Take photo</button><button class="primary" data-action="analyze-photos">Analyze photo</button><button data-action="new-discovery">Log observation</button><button data-action="edit-project">Update project status</button></nav>
     <div class="detail-layout"><section><div class="tabs" role="tablist" aria-label="Project details"><button id="discoveries-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'discoveries'}" data-action="discoveries">Discovery Log <span class="count">${p.discoveries.length}</span></button><button id="photos-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'photos'}" data-action="photos">Site photos <span class="count">${p.photos.length}</span></button></div><div id="tab-content" role="tabpanel" aria-labelledby="${tab}-tab"></div></section>
     <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Photo analysis creates draft findings in Project workspace for human review.</p></section></aside></div>`;
+  if(['Owner','Manager'].includes(document.body.dataset.role)) main.querySelector('.page-heading').insertAdjacentHTML('beforeend','<button data-action="delete-project">Delete project</button>');
   const tabs = main.querySelector('.tabs');
   if(['Owner','Manager'].includes(document.body.dataset.role)) tabs.insertAdjacentHTML('beforeend', '<button id="customer-tab" role="tab" aria-controls="tab-content" aria-selected="'+(tab==='customer')+'" data-action="customer">Customer portal</button>');
   tabs.insertAdjacentHTML('afterbegin', `<button id="operations-tab" role="tab" aria-controls="tab-content" aria-selected="${tab==='operations'}" data-action="operations">Project workspace</button>`);
@@ -175,6 +176,15 @@ function openForm(title, subtitle, fields, save, saveLabel) {
   };
   dialog.showModal();
 }
+function deleteProjectForm() {
+  const p=current;
+  openForm('Delete project', 'Delete '+p.name+'? This cannot be undone.',
+    '<p class="full">This removes the project, photos, measurements, discoveries, estimates, work records, Joe conversations and customer portal messages. Customer links stop working. Recorded company transactions and audit history are retained; equipment is kept and unassigned. Saved backups are not erased.</p>'+field('Type the project name to confirm','confirm_name','',{required:true,max:120,full:true}),
+    async values=>{
+      await write('/api/projects/'+p.id,'DELETE',{confirm_name:values.confirm_name,revision:p.revision});
+      current=null;location.hash='';toast('Project deleted.');
+    },'Delete project');
+}
 function projectForm(edit = false, prefill = null) {
   const p = edit ? current : prefill || { name: '', client: '', address: '', notes: '', type: 'General remodeling', status: 'Discovery' };
   openForm(edit ? 'Edit project' : 'New project', 'Only the project name is required. You can edit the other details later.',
@@ -247,6 +257,7 @@ main.addEventListener('click', e => {
   switch (button.dataset.action) {
     case 'new-project': projectForm(); break;
     case 'edit-project': projectForm(true); break;
+    case 'delete-project': deleteProjectForm(); break;
     case 'new-discovery': discoveryForm(); break;
     case 'edit-discovery': discoveryForm(button.dataset.id); break;
     case 'refresh': load(); break;
