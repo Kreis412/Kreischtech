@@ -1,3 +1,4 @@
+import {appointmentsView} from '/appointments.js';
 import {companyProfile} from '/company-profile.js';
 import {customerAdmin} from '/customer-admin.js';
 import {billingView,isPlayDistribution} from '/billing.js';
@@ -174,8 +175,8 @@ function openForm(title, subtitle, fields, save, saveLabel) {
   };
   dialog.showModal();
 }
-function projectForm(edit = false) {
-  const p = edit ? current : { name: '', client: '', address: '', notes: '', type: 'General remodeling', status: 'Discovery' };
+function projectForm(edit = false, prefill = null) {
+  const p = edit ? current : prefill || { name: '', client: '', address: '', notes: '', type: 'General remodeling', status: 'Discovery' };
   openForm(edit ? 'Edit project' : 'New project', 'Only the project name is required. You can edit the other details later.',
     field('Project name', 'name', p.name, { required: true, max: 120, full: true }) + field('Client / company', 'client', p.client, { full: true }) + field('Jobsite address', 'address', p.address, { max: 300, full: true }) + selectField('Project type', 'type', types, p.type) + selectField('Status', 'status', statuses, p.status) + field('Scope & notes', 'notes', p.notes, { area: true, max: 4000, full: true }),
     async values => {
@@ -211,7 +212,7 @@ async function load() {
   if (location.hash === '#security') history.replaceState(null,'','#settings/security');
   const ticket = ++loadId; const match = location.hash.match(/^#project\/([\w-]+)$/);
   document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : ['#company','#statistics','#equipment','#help'].includes(location.hash) ? location.hash : '#');
+    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : ['#company','#statistics','#equipment','#appointments','#help'].includes(location.hash) ? location.hash : '#');
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (dialog.open) dialog.close();
@@ -233,6 +234,7 @@ async function load() {
     }
     else if (/^#joe(?:\/[\w-]+)?$/.test(location.hash)) {current=null; $('#breadcrumb').textContent='Ask Joe'; await joe.mount(main,location.hash.split('/')[1]||'');}
     else if(location.hash==='#help'){main.onclick=null;current=null;$('#breadcrumb').textContent='Help';helpView(main);}
+    else if(location.hash==='#appointments'){main.onclick=null;current=null;$('#breadcrumb').textContent='Appointments';await appointmentsView(main,{api,esc,onProject:p=>projectForm(false,p)});}
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Insights' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }

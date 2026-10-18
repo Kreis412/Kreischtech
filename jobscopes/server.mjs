@@ -1,4 +1,5 @@
 import {playBilling} from './play-billing.mjs';
+import {appointments} from './appointments.mjs';
 import {googlePlayClient} from './google-play-client.mjs';
 import {customerPortal} from './customer-portal.mjs';
 import {stripeBilling} from './stripe-billing.mjs';
@@ -26,6 +27,7 @@ async function json(req) {
 export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},playOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
   const portal=customerPortal(dataDir);
+  const booking=appointments(dataDir);
   const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>billing?.hasPaidCompany(company)?1:Infinity}),workspaces=new Map();
   const live=process.env.STRIPE_LIVE_BILLING==='1';
   billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount});
@@ -65,6 +67,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(req.headers['sec-fetch-site']==='cross-site' && !(policy.hosted && isPublicEntryNavigation(req))) fail(403,'Cross-site requests are blocked.');
       if(await auth.handle(req,url,json,send,res)) return;
       if(req.method==='GET') {
+        if(['/booking.html','/booking.js','/appointments.js'].includes(url.pathname))return send(200,readFileSync(join(ROOT,'public',url.pathname.slice(1))),url.pathname.endsWith('.html')?'text/html; charset=utf-8':'text/javascript; charset=utf-8');
         if(url.pathname==='/delete-account.html') return send(200,readFileSync(join(ROOT,'public/delete-account.html')),'text/html; charset=utf-8');
         if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
@@ -79,7 +82,12 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(photo){res.writeHead(200,{'Content-Type':value.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(Buffer.from(value.content));}
         return send(200,value);
       }
+      if(url.pathname==='/api/booking/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.publicStatus(req.headers['x-booking-token']));}
+      if(url.pathname==='/api/booking'){if(req.method==='GET')return send(200,booking.publicView(req.headers['x-booking-token'],url.searchParams.get('date')));if(req.method==='POST')return send(201,booking.request(req.headers['x-booking-token'],await json(req)));fail(405,'Method not allowed.');}
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(url.pathname==='/api/appointments/settings'){if(req.method==='GET')return send(200,booking.settings(session));if(req.method==='PUT')return send(200,booking.settings(session,await json(req)));fail(405,'Method not allowed.');}
+      if(url.pathname==='/api/appointments'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.list(session));}
+      const appointmentMatch=url.pathname.match(/^\/api\/appointments\/([\w-]+)$/);if(appointmentMatch){if(req.method!=='PUT')fail(405,'Method not allowed.');return send(200,booking.update(session,appointmentMatch[1],await json(req)));}
       if(url.pathname==='/api/company-profile'){if(req.method==='GET')return send(200,portal.profile(session));if(req.method==='PUT')return send(200,portal.profile(session,await json(req)));fail(405,'Method not allowed.');}
       const messageMatch=url.pathname.match(/^\/api\/projects\/([\w-]+)\/customer-portal\/messages$/);
       if(messageMatch){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,portal.contractorMessage(session,messageMatch[1],(await json(req)).message));}
@@ -116,7 +124,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
     } catch(e){if(!res.headersSent)send(e.status||500,{error:e.status?e.message:'Request failed. Please try again.'});}
   });
   server.requestTimeout=120000;
-  server.on('close',()=>{for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();play.close();});
+  server.on('close',()=>{for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();play.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
