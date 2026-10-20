@@ -1,3 +1,4 @@
+import {EXPERTISE_GUIDANCE} from './business-expertise.mjs';
 import { acquireLocalModel,localModelBusy } from './local-model.mjs';
 import {randomUUID} from 'node:crypto';
 import {runUnmetered} from './paid-usage.mjs';
@@ -22,7 +23,7 @@ export async function analyzeLocal(image,context='',request=fetch,mode='site'){
   if(!info.ok)fail(503,'Start Ollama and install gemma3:4b before analyzing photos.');
   const details=await info.json();if(!details.capabilities?.includes('vision')||details.remote_host||details.remote_model)fail(503,'This model must support images and run locally.');
   const response=await request(BASE+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},signal,redirect:'error',body:JSON.stringify({model:MODEL,stream:false,keep_alive:0,format:schema,options:{temperature:0,num_ctx:4096,num_predict:1600},messages:[
-   {role:'system',content:mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT},
+   {role:'system',content:(mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT)+' '+EXPERTISE_GUIDANCE},
    {role:'user',content:(mode==='blueprint'?'Review this blueprint sheet. ':'Review this site photo. ')+'User-provided project facts and planned work (use as labeled planning inputs): '+context,images:[image.toString('base64')]}
   ]})});
   if(!response.ok)fail(503,'Ollama could not analyze this image. Check available memory and try one smaller photo.');
@@ -31,7 +32,7 @@ export async function analyzeLocal(image,context='',request=fetch,mode='site'){
   return validateResult(parsed);
  }catch(e){if(e.status)throw e;if(e.name==='TimeoutError'||e.name==='AbortError')fail(504,'Local analysis timed out. No findings were saved. Try a smaller photo.');fail(503,'Cannot reach local Ollama. Start Ollama and try again.');}
 }
-export function analysisStore(db,{analyze=analyzeLocal,cloud=null,measurements=null}={}){
+export function analysisStore(db,{analyze=analyzeLocal,cloud=null,measurements=null,expertise=()=>''}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS photo_analyses(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),photo_id TEXT NOT NULL REFERENCES photos(id),model TEXT NOT NULL,summary TEXT NOT NULL,created_at TEXT NOT NULL,actor TEXT NOT NULL,context TEXT NOT NULL,UNIQUE(project_id,photo_id,model));`);
  db.exec(`CREATE TABLE IF NOT EXISTS blueprint_analyses(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),photo_id TEXT NOT NULL REFERENCES photos(id),model TEXT NOT NULL,summary TEXT NOT NULL,created_at TEXT NOT NULL,actor TEXT NOT NULL,context TEXT NOT NULL,UNIQUE(project_id,photo_id,model));`);
  return {async handle(req,url,project,json,send){
@@ -44,18 +45,22 @@ export function analysisStore(db,{analyze=analyzeLocal,cloud=null,measurements=n
   const photo=db.prepare('SELECT * FROM photos WHERE project_id=? AND id=?').get(pid,b.photo_id);if(!photo)fail(404,'Photo not found in this project.');
   if(typeof (b.context||'')!=='string'||(b.context||'').length>2000)fail(400,'Context must be at most 2000 characters.');
   const previous=db.prepare(`SELECT * FROM ${table} WHERE project_id=? AND photo_id=? AND model=?`).get(pid,photo.id,model);
-  if(previous){send(200,{...previous,mode,reused:true});return true;}
+  if(previous&&b.refresh!==true){send(200,{...previous,mode,reused:true});return true;}
+  if(previous&&b.previous_id!==previous.id){send(200,{...previous,mode,reused:true});return true;}
+  const detail=b.detail||'concise';if(!['concise','detailed'].includes(detail))fail(400,'Choose concise or detailed feedback.');
+  const detailPrompt=detail==='concise'?' Review thoroughly but report concisely: summary at most two short sentences, up to three important findings, and one short sentence per finding field. Lead with practical next steps; avoid repeated caveats.':' Provide a detailed explanation of relevant evidence and practical next steps within the required schema and field limits.';
   const labels=measurements?.context(photo.id)||'';
-  const context=(b.context||'')+(labels?'\nUser-provided landmark measurements (not inferred scale; do not extrapolate to other depths):\n'+labels:'');
-  if(context.length>2000)fail(400,'Context plus measurement labels is too long. Shorten the context or labels to fit 2,000 characters.');
+  const context='Feedback detail: '+detail+'\n'+(expertise()?expertise()+'\n':'')+(b.context||'')+(labels?'\nUser-provided landmark measurements (not inferred scale; do not extrapolate to other depths):\n'+labels:'');
+  if(context.length>8000)fail(400,'Combined analysis context is too long.');
+  if(previous&&previous.context===context){send(200,{...previous,mode,reused:true});return true;}
   const release=acquireLocalModel();
   try{
    const response=await (useCloud?(cloud.runSaved||runUnmetered):runUnmetered)('analysis',mode+':'+photo.id+':'+randomUUID(),async()=>{
-   const result=validateResult((useCloud?await cloud.analyze(Buffer.from(photo.content),context,mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT,schema):await analyze(Buffer.from(photo.content),context,undefined,mode)));
+   const result=validateResult((useCloud?await cloud.analyze(Buffer.from(photo.content),context,(mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT)+' '+EXPERTISE_GUIDANCE+detailPrompt,schema):await analyze(Buffer.from(photo.content),context+detailPrompt,undefined,mode)));
    const id=randomUUID(),now=new Date().toISOString(),actor=req.jobscopesActor?.name||'Local operator';
    db.exec('BEGIN IMMEDIATE');
    try{
-    db.prepare(`INSERT INTO ${table} VALUES(?,?,?,?,?,?,?,?)`).run(id,pid,photo.id,model,result.summary,now,actor,context);
+    db.prepare(`INSERT INTO ${table} VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(project_id,photo_id,model) DO UPDATE SET id=excluded.id,summary=excluded.summary,created_at=excluded.created_at,actor=excluded.actor,context=excluded.context`).run(id,pid,photo.id,model,result.summary,now,actor,context);
     for(const f of result.findings){const content={...f,location:'',photo_id:photo.id,status:'Needs review',review_notes:'',reviewed_by:null,reviewed_at:null,source:(useCloud?'Cloud AI draft':'Local AI draft')+(mode==='blueprint'?' · Blueprint':''),analysis_mode:mode,model,analysis_id:id};db.prepare('INSERT INTO operations_records VALUES(?,?,?,?,1,?,?)').run(randomUUID(),pid,'findings',JSON.stringify(content),now,now);}
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}

@@ -27,7 +27,7 @@ export function cloudAdapter({dataDir=join(ROOT,'data'),request=fetch,maxAttempt
  const limit=maxAttempts??config.max_attempts;if(!Number.isInteger(limit)||limit<0||limit>22)throw new Error('Invalid local pilot limit.');
  const status=()=>({reserved_usd:ledger.prepare('SELECT count(*) n FROM attempts').get().n,limit_usd:limit,remaining_attempts:Math.max(0,limit-ledger.prepare('SELECT count(*) n FROM attempts').get().n)});
  async function analyze(image,context,prompt,schema){
-  if(typeof context!=='string'||context.length>2000||image.length>15*1024*1024)fail(400,'Photo or context exceeds the pilot limit.');
+  if(typeof context!=='string'||context.length>8000||image.length>15*1024*1024)fail(400,'Photo or context exceeds the pilot limit.');
   const key=await unlock(),encoded=await prepare(image);
   ledger.exec('BEGIN IMMEDIATE');let id;const spendingId=budget?randomUUID():null;
   try{if((!budget||enforcePilotLimit)&&!status().remaining_attempts)fail(429,'The authorized pilot allowance is used. Review spending before authorizing more.');budget?.reserve(spendingId);id=ledger.prepare("INSERT INTO attempts(status,created_at) VALUES('Reserved',?)").run(new Date().toISOString()).lastInsertRowid;ledger.exec('COMMIT');}catch(e){ledger.exec('ROLLBACK');throw e;}

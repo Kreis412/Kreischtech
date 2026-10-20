@@ -1,3 +1,4 @@
+import {businessExpertise} from './business-expertise.mjs';
 import { measurementStore } from './measurements.mjs';
 import { equipmentStore } from './equipment.mjs';
 import { equipmentPhotos } from './equipment-photos.mjs';
@@ -61,14 +62,15 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS photo_upload_requests(actor TEXT NOT NULL,upload_id TEXT NOT NULL,project_id TEXT NOT NULL,fingerprint TEXT NOT NULL,photo_id TEXT NOT NULL REFERENCES photos(id),PRIMARY KEY(actor,upload_id));
     `);
+  const expertise = businessExpertise(db);
   const estimates = materialsStore(db);
   const company = companyStore(db, estimates);
   const equipment = equipmentStore(db);
-  const assetPhotos = equipmentPhotos(db,{cloud,body,imageType});
+  const assetPhotos = equipmentPhotos(db,{cloud,body,imageType,expertise:expertise.context});
   const operations = operationsStore(db, estimates);
   const measurements = measurementStore(db);
-  const analysis = analysisStore(db,{cloud,measurements});
-  const joe = joeStore(db,{measurements,...joeOptions});
+  const analysis = analysisStore(db,{cloud,measurements,expertise:expertise.context});
+  const joe = joeStore(db,{measurements,expertise:expertise.context,...joeOptions});
   let backupRunning = false;
   const project = id => db.prepare('SELECT * FROM projects WHERE id = ?').get(id) || fail(404, 'Project not found.');
   const photos = id => db.prepare('SELECT id, project_id, name, mime, created_at FROM photos WHERE project_id = ? ORDER BY created_at DESC').all(id);
@@ -95,6 +97,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
           return send(200, encrypted, 'application/octet-stream');
         } finally { backupRunning = false; }
       }
+      if (await expertise.handle(req,url,json,send)) return;
       if (await measurements.handle(req,url,project,json,send)) return;
       if (await joe.handle(req,url,project,json,send)) return;
       if (await analysis.handle(req, url, project, json, send)) return;

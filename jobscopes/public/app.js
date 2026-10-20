@@ -46,7 +46,7 @@ let filters = { query: '', status: '', type: '' };
 const write = (path, method, value) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 const materials = materialUI({ api, write, esc, field, selectField: (...args) => selectField(...args), openForm, toast, getProject: () => current });
 const operations = operationsUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast});
-const measurements = measurementUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast});
+const measurements = measurementUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast,onAnalyze:async(pid,photoId)=>{const p=current?.id===pid?current:await api('/api/projects/'+pid);await operations.analyzePhoto(p,photoId,async()=>{if(current?.id===pid){tab='operations';projectView();}});}});
 const equipment = equipmentUI({api,write,esc,field,selectField:(...args)=>selectField(...args),openForm,toast});
 const joe = joeUI({api,write,esc,openForm,field,toast});
 const security = securityUI({api,esc});
@@ -208,8 +208,14 @@ function discoveryForm(id) {
     });
 }
 
+async function expertiseSettings(){
+ const profile=await api('/api/business-expertise');
+ main.innerHTML='<section class="panel"><h1>Profession & specialties</h1><p>Tell Joe what your business does. This profile is shared across your company and included when members ask Joe or analyze photos. It is not a license verification.</p><form id="expertise-form">'+field('Profession / trade','profession',profile.profession,{max:160,full:true})+field('Specialties','specialties',profile.specialties,{max:600,area:true,full:true})+'<p>Examples: Professional carpenter; finish carpentry, decks, framing. Leave blank to remove this context. Cloud AI receives these fields when you submit a request.</p><button type="submit">Save profession</button><p role="status" id="expertise-status"></p></form></section>';
+ const form=main.querySelector('form');if(document.body.dataset.role!=='Owner'){form.querySelectorAll('input,textarea,button').forEach(x=>x.disabled=true);main.querySelector('#expertise-status').textContent='Only the business owner can update this profile.';return;}
+ form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await write('/api/business-expertise','PUT',Object.fromEntries(new FormData(form)));main.querySelector('#expertise-status').textContent='Profession saved. Joe and new photo analyses will use it.';}catch(error){main.querySelector('#expertise-status').textContent=error.message;}finally{b.disabled=false;}};
+}
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView() {
   const dark=document.documentElement.dataset.theme==='dark';
@@ -237,6 +243,7 @@ async function load() {
       else if(location.hash==='#settings/profile') await companyProfile(main,{api,esc});
       else if(location.hash==='#settings/billing') await billingView(main,{api,esc});
       else if(location.hash==='#settings/appearance') appearanceView();
+      else if(location.hash==='#settings/expertise') await expertiseSettings();
       else if(location.hash==='#settings/assistant') joe.settings(main);
       else await account.mount();
       if(ticket!==loadId)return;

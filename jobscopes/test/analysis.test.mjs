@@ -49,7 +49,7 @@ test('blueprints use dedicated prompts and separate saved results without extra 
  await assert.rejects(run(body,'POST','b'),e=>e.status===404);
  await assert.rejects(run(body,'POST','a','Viewer'),e=>e.status===403);
  await run({...body,mode:'site'});await run(body);assert.equal((await run(body)).reused,true);
- assert.deepEqual(prompts,[REVIEW_PROMPT,BLUEPRINT_PROMPT]);
+ assert.equal(prompts.length,2);assert.ok(prompts[0].startsWith(REVIEW_PROMPT));assert.ok(prompts[1].startsWith(BLUEPRINT_PROMPT));assert.match(prompts[0],/report concisely/);
  assert.deepEqual((await run({},'GET')).runs.map(r=>r.mode).sort(),['blueprint','site']);
  const drafts=db.prepare('SELECT data FROM operations_records').all().map(r=>JSON.parse(r.data));assert.equal(drafts[1].analysis_mode,'blueprint');assert.equal(drafts[1].status,'Needs review');assert.match(drafts[1].source,/Blueprint/);
  analysisStore(db);assert.equal((await run({},'GET')).runs.length,2);assert.equal((await run({},'GET','b')).runs.length,0);
