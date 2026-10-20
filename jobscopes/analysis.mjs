@@ -1,3 +1,4 @@
+import {estimateInputs,ESTIMATE_PROMPT,estimateSchema,validateEstimate} from './photo-estimate.mjs';
 import {EXPERTISE_GUIDANCE} from './business-expertise.mjs';
 import { acquireLocalModel,localModelBusy } from './local-model.mjs';
 import {randomUUID} from 'node:crypto';
@@ -16,55 +17,63 @@ export function validateResult(value){
   return [k,f[k].trim()];
  })))};
 }
-export async function analyzeLocal(image,context='',request=fetch,mode='site'){
+export async function analyzeLocal(image,context='',request=fetch,mode='site',estimate=false){
  const signal=AbortSignal.timeout(180000);
  try{
   const info=await request(BASE+'/api/show',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:MODEL}),signal,redirect:'error'});
   if(!info.ok)fail(503,'Start Ollama and install gemma3:4b before analyzing photos.');
   const details=await info.json();if(!details.capabilities?.includes('vision')||details.remote_host||details.remote_model)fail(503,'This model must support images and run locally.');
-  const response=await request(BASE+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},signal,redirect:'error',body:JSON.stringify({model:MODEL,stream:false,keep_alive:0,format:schema,options:{temperature:0,num_ctx:4096,num_predict:1600},messages:[
-   {role:'system',content:(mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT)+' '+EXPERTISE_GUIDANCE},
+  const response=await request(BASE+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},signal,redirect:'error',body:JSON.stringify({model:MODEL,stream:false,keep_alive:0,format:estimate?{...schema,required:[...schema.required,'preliminary_estimate'],properties:{...schema.properties,preliminary_estimate:estimateSchema}}:schema,options:{temperature:0,num_ctx:4096,num_predict:1600},messages:[
+   {role:'system',content:(mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT)+' '+EXPERTISE_GUIDANCE+(estimate?ESTIMATE_PROMPT:'')},
    {role:'user',content:(mode==='blueprint'?'Review this blueprint sheet. ':'Review this site photo. ')+'User-provided project facts and planned work (use as labeled planning inputs): '+context,images:[image.toString('base64')]}
   ]})});
   if(!response.ok)fail(503,'Ollama could not analyze this image. Check available memory and try one smaller photo.');
   const result=await response.json();if(result.done!==true||result.done_reason==='length')fail(502,'The analysis was cut short. No findings were saved. Try a closer, simpler photo.');
   let parsed;try{parsed=JSON.parse(result.message?.content);}catch{fail(502,'The model did not return readable findings. No findings were saved.');}
-  return validateResult(parsed);
+  return {...validateResult(parsed),...(estimate?{preliminary_estimate:validateEstimate(parsed.preliminary_estimate)}:{})};
  }catch(e){if(e.status)throw e;if(e.name==='TimeoutError'||e.name==='AbortError')fail(504,'Local analysis timed out. No findings were saved. Try a smaller photo.');fail(503,'Cannot reach local Ollama. Start Ollama and try again.');}
 }
 export function analysisStore(db,{analyze=analyzeLocal,cloud=null,measurements=null,expertise=()=>''}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS photo_analyses(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),photo_id TEXT NOT NULL REFERENCES photos(id),model TEXT NOT NULL,summary TEXT NOT NULL,created_at TEXT NOT NULL,actor TEXT NOT NULL,context TEXT NOT NULL,UNIQUE(project_id,photo_id,model));`);
  db.exec(`CREATE TABLE IF NOT EXISTS blueprint_analyses(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),photo_id TEXT NOT NULL REFERENCES photos(id),model TEXT NOT NULL,summary TEXT NOT NULL,created_at TEXT NOT NULL,actor TEXT NOT NULL,context TEXT NOT NULL,UNIQUE(project_id,photo_id,model));`);
+ db.exec('CREATE TABLE IF NOT EXISTS photo_cost_estimates(analysis_id TEXT PRIMARY KEY,inputs TEXT NOT NULL,result TEXT NOT NULL)');
+ for(const table of ['photo_analyses','blueprint_analyses'])db.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_cost_cleanup AFTER DELETE ON ${table} BEGIN DELETE FROM photo_cost_estimates WHERE analysis_id=OLD.id; END`);
+ const withEstimate=r=>{const e=db.prepare('SELECT inputs,result FROM photo_cost_estimates WHERE analysis_id=?').get(r.id);return {...r,...(e?{estimate_inputs:JSON.parse(e.inputs),preliminary_estimate:JSON.parse(e.result)}:{})};};
  return {async handle(req,url,project,json,send){
   const m=url.pathname.match(/^\/api\/projects\/([\w-]+)\/analysis$/);if(!m)return false;
   const pid=m[1];project(pid);
-  if(req.method==='GET'){send(200,{cloud:cloud?cloud.status():null,provider:cloud?'OpenAI cloud available':'Ollama on this computer',model:cloud?'gpt-6-astra':MODEL,busy:localModelBusy(),runs:db.prepare("SELECT *, 'site' AS mode FROM photo_analyses WHERE project_id=? UNION ALL SELECT *, 'blueprint' AS mode FROM blueprint_analyses WHERE project_id=? ORDER BY created_at DESC").all(pid,pid)});return true;}
+  if(req.method==='GET'){send(200,{cloud:cloud?cloud.status():null,provider:cloud?'OpenAI cloud available':'Ollama on this computer',model:cloud?'gpt-6-astra':MODEL,busy:localModelBusy(),runs:db.prepare("SELECT *, 'site' AS mode FROM photo_analyses WHERE project_id=? UNION ALL SELECT *, 'blueprint' AS mode FROM blueprint_analyses WHERE project_id=? ORDER BY created_at DESC").all(pid,pid).map(withEstimate)});return true;}
   if(req.method!=='POST')fail(405,'Method not allowed.');
   if(!['Owner','Manager'].includes(req.jobscopesActor?.role||'Owner'))fail(403,'Only owners and managers can run analysis.');
   const b=await json(req);const mode=b.mode??'site';if(!['site','blueprint'].includes(mode))fail(400,'Choose site photo or blueprint analysis.');const table=mode==='blueprint'?'blueprint_analyses':'photo_analyses';const useCloud=b.provider==='openai';if(useCloud&&!cloud)fail(503,'Cloud analysis is not configured.');if(useCloud&&b.cloud_consent!==true)fail(400,'Confirm sending the selected photo and context to OpenAI.');const model=useCloud?'gpt-6-astra':MODEL;if(typeof b.photo_id!=='string')fail(400,'Choose a project photo.');
   const photo=db.prepare('SELECT * FROM photos WHERE project_id=? AND id=?').get(pid,b.photo_id);if(!photo)fail(404,'Photo not found in this project.');
   if(typeof (b.context||'')!=='string'||(b.context||'').length>2000)fail(400,'Context must be at most 2000 characters.');
   const previous=db.prepare(`SELECT * FROM ${table} WHERE project_id=? AND photo_id=? AND model=?`).get(pid,photo.id,model);
-  if(previous&&b.refresh!==true){send(200,{...previous,mode,reused:true});return true;}
-  if(previous&&b.previous_id!==previous.id){send(200,{...previous,mode,reused:true});return true;}
+  if(previous&&b.refresh!==true){send(200,{...withEstimate(previous),mode,reused:true});return true;}
+  if(previous&&b.previous_id!==previous.id){send(200,{...withEstimate(previous),mode,reused:true});return true;}
+  const quick=estimateInputs(b.estimate_inputs);
   const detail=b.detail||'concise';if(!['concise','detailed'].includes(detail))fail(400,'Choose concise or detailed feedback.');
   const detailPrompt=detail==='concise'?' Review thoroughly but report concisely: summary at most two short sentences, up to three important findings, and one short sentence per finding field. Lead with practical next steps; avoid repeated caveats.':' Provide a detailed explanation of relevant evidence and practical next steps within the required schema and field limits.';
   const labels=measurements?.context(photo.id)||'';
-  const context='Feedback detail: '+detail+'\n'+(expertise()?expertise()+'\n':'')+(b.context||'')+(labels?'\nUser-provided landmark measurements (not inferred scale; do not extrapolate to other depths):\n'+labels:'');
+  const context='Feedback detail: '+detail+'\n'+(expertise()?expertise()+'\n':'')+(b.context||'')+(quick?'\nQuick estimate answers (USD): '+JSON.stringify(quick):'')+(labels?'\nUser-provided landmark measurements (not inferred scale; do not extrapolate to other depths):\n'+labels:'');
   if(context.length>8000)fail(400,'Combined analysis context is too long.');
-  if(previous&&previous.context===context){send(200,{...previous,mode,reused:true});return true;}
+  if(previous&&previous.context===context){send(200,{...withEstimate(previous),mode,reused:true});return true;}
   const release=acquireLocalModel();
   try{
    const response=await (useCloud?(cloud.runSaved||runUnmetered):runUnmetered)('analysis',mode+':'+photo.id+':'+randomUUID(),async()=>{
-   const result=validateResult((useCloud?await cloud.analyze(Buffer.from(photo.content),context,(mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT)+' '+EXPERTISE_GUIDANCE+detailPrompt,schema):await analyze(Buffer.from(photo.content),context+detailPrompt,undefined,mode)));
+   const responseSchema=quick?{...schema,required:[...schema.required,'preliminary_estimate'],properties:{...schema.properties,preliminary_estimate:estimateSchema}}:schema;
+   const raw=useCloud?await cloud.analyze(Buffer.from(photo.content),context,(mode==='blueprint'?BLUEPRINT_PROMPT:REVIEW_PROMPT)+' '+EXPERTISE_GUIDANCE+detailPrompt+(quick?ESTIMATE_PROMPT:''),responseSchema):await analyze(Buffer.from(photo.content),context+detailPrompt,undefined,mode,Boolean(quick));
+   const result=validateResult(raw),estimate=quick?validateEstimate(raw.preliminary_estimate):null;
    const id=randomUUID(),now=new Date().toISOString(),actor=req.jobscopesActor?.name||'Local operator';
    db.exec('BEGIN IMMEDIATE');
    try{
     db.prepare(`INSERT INTO ${table} VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(project_id,photo_id,model) DO UPDATE SET id=excluded.id,summary=excluded.summary,created_at=excluded.created_at,actor=excluded.actor,context=excluded.context`).run(id,pid,photo.id,model,result.summary,now,actor,context);
+    if(estimate)db.prepare('INSERT INTO photo_cost_estimates VALUES(?,?,?)').run(id,JSON.stringify(quick),JSON.stringify(estimate));
+    if(previous)db.prepare('DELETE FROM photo_cost_estimates WHERE analysis_id=?').run(previous.id);
     for(const f of result.findings){const content={...f,location:'',photo_id:photo.id,status:'Needs review',review_notes:'',reviewed_by:null,reviewed_at:null,source:(useCloud?'Cloud AI draft':'Local AI draft')+(mode==='blueprint'?' · Blueprint':''),analysis_mode:mode,model,analysis_id:id};db.prepare('INSERT INTO operations_records VALUES(?,?,?,?,1,?,?)').run(randomUUID(),pid,'findings',JSON.stringify(content),now,now);}
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
-   return {id,summary:result.summary,count:result.findings.length,model,mode,reused:false};
+   return {id,summary:result.summary,count:result.findings.length,model,mode,reused:false,preliminary_estimate:estimate};
    });
    send(201,response);return true;
   }finally{release();}
