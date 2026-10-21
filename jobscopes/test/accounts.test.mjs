@@ -17,6 +17,10 @@ test('authenticated companies: isolation, roles, invitations, sessions and persi
   const client=()=>({cookie:'',async request(path,method='GET',body,expected=200,headers={}){const r=await fetch(base+path,{method,headers:{Cookie:this.cookie,...(body?{'Content-Type':'application/json'}:{}),...headers},body:body?JSON.stringify(body):undefined});if(r.headers.get('set-cookie')){this.lastCookie=r.headers.get('set-cookie');this.cookie=this.lastCookie.split(';')[0];}const b=await r.json();assert.equal(r.status,expected,JSON.stringify(b));return b;}});
   const a=client(),b=client(),v=client(),anon=client();let ac,bc,project,photo,viewerId;
   await t.test('anonymous access is denied; registration does not accept a role',async()=>{
+    const appSource=await (await fetch(base+'/app.js')).text();
+    for(const match of appSource.matchAll(/from\s+['"](\/[^'"]+\.js)['"]/g)){
+      const asset=await fetch(base+match[1]);assert.equal(asset.status,200,match[1]);assert.match(asset.headers.get('content-type'),/javascript/,match[1]);
+    }
     for(const path of ['/api/projects','/api/company','/api/security/backup','/api/photos/missing'])await anon.request(path,'GET',undefined,401);
     await a.request('/api/account/register','POST',{email:'owner-a@example.test',password,name:'Owner A',company:'A Construction',role:'Viewer'},201);
     assert.match(a.lastCookie,/HttpOnly/);assert.match(a.lastCookie,/SameSite=Strict/);
