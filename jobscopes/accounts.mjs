@@ -27,7 +27,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
     CREATE INDEX IF NOT EXISTS audit_company ON audit(company_id,id);`);
   function transaction(fn) {db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}
   const memberCount=company=>db.prepare('SELECT count(*) n FROM memberships WHERE company_id=?').get(company).n;
-  const checkSeat=company=>{if(memberCount(company)>=seatLimit(company))fail(409,'Solo includes one user. Contact support before adding another member.');};
+  const checkSeat=company=>{if(memberCount(company)>=seatLimit(company))fail(409,'Your current plan has no available team seats. Choose a larger plan or remove a member.');};
   const audit=(company,user,action)=>db.prepare('INSERT INTO audit(company_id,actor_id,action,created_at) VALUES(?,?,?,?)').run(company,user,action,new Date().toISOString());
   function limit(key) {
     const now=Date.now();db.prepare('DELETE FROM attempts WHERE expires<?').run(now);

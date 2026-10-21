@@ -28,12 +28,12 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
   const portal=customerPortal(dataDir);
   const booking=appointments(dataDir);
-  const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>billing?.hasPaidCompany(company)?1:Infinity}),workspaces=new Map();
+  const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>{const stripePaid=billing?.hasPaidCompany(company),playPaid=play?.hasPaidCompany(company);return stripePaid||playPaid?Math.max(stripePaid?(billing.seatLimit?.(company)??1):1,playPaid?play.seatLimit(company):1):Infinity;}}),workspaces=new Map();
   const live=process.env.STRIPE_LIVE_BILLING==='1';
-  billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount});
+  billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,pro:process.env.STRIPE_PRO_PRICE_ID,team:process.env.STRIPE_TEAM_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount,otherSubscription:company=>play?.hasSubscription(company)??false});
   let playClient;
   try{if(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)playClient=googlePlayClient(JSON.parse(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON));}catch{console.error('Google Play credentials are invalid; purchases remain disabled.');}
-  play=playBilling({dataDir,client:playClient,enabled:process.env.GOOGLE_PLAY_BILLING==='1',allowTest:process.env.GOOGLE_PLAY_ALLOW_TEST==='1',...playOptions});
+  play=playBilling({dataDir,client:playClient,enabled:process.env.GOOGLE_PLAY_BILLING==='1',allowTest:process.env.GOOGLE_PLAY_ALLOW_TEST==='1',products:{solo:process.env.GOOGLE_PLAY_SOLO_PRODUCT_ID,pro:process.env.GOOGLE_PLAY_PRO_PRODUCT_ID,team:process.env.GOOGLE_PLAY_TEAM_PRODUCT_ID},...playOptions,memberCount:auth.memberCount,otherSubscription:company=>billing.hasSubscription?.(company)??false});
   const paidCompany=company=>billing.hasPaidCompany(company)||play.hasPaidCompany(company);
   const budget=(billing.live||play.ready)&&policy.hosted&&process.env.OPENAI_API_KEY?aiBudget(dataDir,{monthlyUsd:25}):null;
   const cloud=policy.hosted?(process.env.OPENAI_API_KEY?cloudAdapter({dataDir,request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:Number(process.env.AI_PILOT_MAX_ATTEMPTS||0),budget,enforcePilotLimit:true}):null):(existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null);
@@ -98,6 +98,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(req.method!=='POST')fail(405,'Method not allowed.');
         const b=await json(req);
         if(url.pathname==='/api/billing/play/confirm')return send(200,await play.confirm(session,b.product,b.token));
+        if(url.pathname==='/api/billing/play/prepare')return send(200,play.prepare(session,b.product));
         if(url.pathname==='/api/billing/play/sync'){if(session.role!=='Owner')fail(403,'Only the owner can check purchases.');await play.reconcile(session.company_id,true);return send(200,play.status(session));}
         fail(404,'Billing action not found.');
       }

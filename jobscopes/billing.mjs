@@ -9,8 +9,13 @@ export const ANALYSIS_PACKS=Object.freeze([
  Object.freeze({id:'analysis_5',name:'5 photo analyses',price_cents:499,interval:'pack',analyses:5}),
  Object.freeze({id:'analysis_12',name:'12 photo analyses',price_cents:1099,interval:'pack',analyses:12})
 ]);
+export const SUBSCRIPTION_PLANS = Object.freeze([
+ Object.freeze({id:'solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25,joe_answers:25}),
+ Object.freeze({id:'pro',name:'Pro',price_cents:3900,interval:'month',seats:1,analyses:75,joe_answers:100}),
+ Object.freeze({id:'team',name:'Team',price_cents:7900,interval:'month',seats:5,analyses:150,joe_answers:250})
+]);
 export const PLANS = Object.freeze([
- Object.freeze({id:'solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25}),
+ ...SUBSCRIPTION_PLANS,
  Object.freeze({id:'crew',name:'Crew',price_cents:3900,interval:'month',seats:5,analyses:60}),
  Object.freeze({id:'pack',name:'Pay as you go',price_cents:1000,interval:'pack',seats:1,analyses:10})
 ]);
@@ -85,7 +90,8 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
   });
  }
  const grantInfo=(id,company)=>db.prepare('SELECT amount,expires,kind FROM credit_grants WHERE id=? AND company=?').get(id,company);
- return {balance,carryoverBalance,grant,reserve,settle,adjust,grantInfo,close:()=>db.close()};
+ const grantAvailable=(id,company)=>db.prepare('SELECT coalesce(a.available,g.amount) amount FROM credit_grants g LEFT JOIN credit_adjustments a ON a.grant_id=g.id WHERE g.id=? AND g.company=?').get(id,company)?.amount??0;
+ return {grantAvailable,balance,carryoverBalance,grant,reserve,settle,adjust,grantInfo,close:()=>db.close()};
 }
 
 export function billingPreview(){return {mode:'pilot',checkout_enabled:false,currency:'USD',plans:PLANS,trial_analyses:3,

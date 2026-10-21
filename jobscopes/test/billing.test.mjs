@@ -70,7 +70,7 @@ test('pricing preview needs sign-in and cannot accept purchases or company grant
  assert.equal(r.status,201);const headers={cookie:r.headers.get('set-cookie').split(';')[0],'content-type':'application/json'};
  const data=await (await fetch(base+'/api/billing',{headers})).json();
  assert.deepEqual(data,billingPreview());assert.equal(data.checkout_enabled,false);
- assert.deepEqual(data.plans.map(p=>p.price_cents),[1900,3900,1000]);
+ assert.deepEqual(data.plans.map(p=>p.price_cents),[1900,3900,7900,3900,1000]);
  assert.equal((await fetch(base+'/api/billing',{method:'POST',headers,body:JSON.stringify({company:'other',plan:'crew',credits:999})})).status,405);
  assert.equal((await fetch(base+'/billing.js')).status,200);
 });

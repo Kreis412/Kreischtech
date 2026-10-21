@@ -38,3 +38,40 @@ test('lost consume response retries safely and refund removes only its own remai
  f.add('other-token');await f.service.confirm(owner,'analysis_12','other-token');
  f.purchases.get('retry-token').purchaseState=1;await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,12);
 });
+
+function subscriptionFixture(t){
+ const dataDir=mkdtempSync(join(tmpdir(),'cs-play-sub-'));let time=Date.now(),acks=0,failAck=false;
+ const purchases=new Map(),products={solo:'contractorsight_solo',pro:'contractorsight_pro',team:'contractorsight_team'};
+ const client={subscription:async token=>structuredClone(purchases.get(token)),acknowledge:async()=>{acks++;if(failAck)throw Error('offline');}};
+ const options={dataDir,client,enabled:true,products,now:()=>time};let service=playBilling(options);
+ t.after(()=>{service.close();rmSync(dataDir,{force:true,recursive:true});});
+ return {get service(){return service;},purchases,options,get acks(){return acks;},failAck:v=>failAck=v,advance:ms=>time+=ms,restart(){service.close();service=playBilling(options);},add(token,plan='team',extra={}){purchases.set(token,{subscriptionState:'SUBSCRIPTION_STATE_ACTIVE',acknowledgementState:'ACKNOWLEDGEMENT_STATE_PENDING',lineItems:[{productId:products[plan],offerDetails:{basePlanId:'monthly'},expiryTime:new Date(time+30*86400000).toISOString(),latestSuccessfulOrderId:'order-'+token}],...extra});}};
+}
+test('Play Team grants once, restores after acknowledgement failure and expires monthly credits',async t=>{
+ const f=subscriptionFixture(t);f.add('team-token-001');f.failAck(true);
+ await assert.rejects(f.service.confirm(owner,'contractorsight_team','team-token-001'));
+ assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.status(owner).joe_balance,250);
+ f.failAck(false);f.restart();await f.service.confirm(owner,'contractorsight_team','team-token-001');
+ assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.seatLimit(owner.company_id),5);
+ await f.service.runSaved(owner.company_id)('analysis','photo1',async()=>true);
+ await f.service.confirm(owner,'contractorsight_team','team-token-001');assert.equal(f.service.status(owner).balance,149);
+ await assert.rejects(f.service.confirm({...owner,company_id:'other'},'contractorsight_team','team-token-001'),{status:409});
+ f.advance(31*86400000);assert.equal(f.service.status(owner).balance,0);assert.equal(f.service.seatLimit(owner.company_id),1);
+});
+test('Play renewals replace monthly balances; cancellation keeps paid access and revocation removes it',async t=>{
+ const f=subscriptionFixture(t);f.add('pro-token-001','pro');await f.service.confirm(owner,'contractorsight_pro','pro-token-001');
+ await f.service.runSaved(owner.company_id)('joe','q1',async()=>true);
+ const p=f.purchases.get('pro-token-001');p.lineItems[0].latestSuccessfulOrderId='renewal-001';p.lineItems[0].expiryTime=new Date(Date.parse(p.lineItems[0].expiryTime)+30*86400000).toISOString();
+ await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,75);assert.equal(f.service.status(owner).joe_balance,100);
+ p.subscriptionState='SUBSCRIPTION_STATE_CANCELED';await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,75);
+ p.subscriptionState='SUBSCRIPTION_STATE_EXPIRED';await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,0);assert.equal(f.service.status(owner).joe_balance,0);
+});
+test('Play rejects unverified, mismatched, duplicate, test and oversized subscriptions',async t=>{
+ const f=subscriptionFixture(t);f.add('pending-token-1','pro',{subscriptionState:'SUBSCRIPTION_STATE_PENDING'});
+ assert.equal((await f.service.confirm(owner,'contractorsight_pro','pending-token-1')).pending,true);assert.equal(f.service.status(owner).balance,0);
+ f.add('test-token-001','pro',{testPurchase:{}});await assert.rejects(f.service.confirm(owner,'contractorsight_pro','test-token-001'),{status:400});
+ f.add('wrong-token-001','pro');await assert.rejects(f.service.confirm(owner,'contractorsight_team','wrong-token-001'),{status:409});
+ f.add('team-token-001');await f.service.confirm(owner,'contractorsight_team','team-token-001');f.add('team-token-002');await assert.rejects(f.service.confirm(owner,'contractorsight_team','team-token-002'),{status:409});
+ assert.equal(f.service.status(owner).balance,150);
+ f.options.memberCount=()=>6;f.restart();f.add('team-token-003');await assert.rejects(f.service.confirm({...owner,company_id:'six'},'contractorsight_team','team-token-003'),{status:409});
+});

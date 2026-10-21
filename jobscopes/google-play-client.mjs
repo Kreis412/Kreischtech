@@ -6,7 +6,7 @@ export function googlePlayClient(credentials,{request=fetch,now=()=>Date.now()}=
  const key=createPrivateKey(credentials.private_key),email=credentials.client_email;
  if(typeof email!=='string'||!email.endsWith('.gserviceaccount.com'))throw Error('Invalid Google service account.');
  let access,expires=0;
- async function call(product,token,consume=false){
+ async function call(product,token,action='get'){
   try{
    if(!access||now()>=expires){
     const encode=o=>Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -15,11 +15,13 @@ export function googlePlayClient(credentials,{request=fetch,now=()=>Date.now()}=
     const response=await request('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000),headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}).toString()});
     if(!response.ok)fail();const body=await response.json();if(!body.access_token)fail();access=body.access_token;expires=now()+Math.min(Number(body.expires_in)||3600,3600)*1000-60000;
    }
-   const url=`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PLAY_PACKAGE}/purchases/products/${encodeURIComponent(product)}/tokens/${encodeURIComponent(token)}${consume?':consume':''}`;
-   const response=await request(url,{method:consume?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers:{Authorization:'Bearer '+access}});
+   const write=action==='consume'||action==='acknowledge';
+   const path=action==='subscription'?`subscriptionsv2/tokens/${encodeURIComponent(token)}`:`${action==='acknowledge'?'subscriptions':'products'}/${encodeURIComponent(product)}/tokens/${encodeURIComponent(token)}${write?':'+action:''}`;
+   const url=`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PLAY_PACKAGE}/purchases/${path}`;
+   const response=await request(url,{method:write?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers:{Authorization:'Bearer '+access,...(action==='acknowledge'?{'Content-Type':'application/json'}:{})},...(action==='acknowledge'?{body:'{}'}:{})});
    if(!response.ok){if(response.status===401)expires=0;fail();}
-   return consume?null:await response.json();
+   return write?null:await response.json();
   }catch{fail();}
  }
- return {get:(product,token)=>call(product,token),consume:(product,token)=>call(product,token,true)};
+ return {get:(product,token)=>call(product,token),consume:(product,token)=>call(product,token,'consume'),subscription:token=>call(null,token,'subscription'),acknowledge:(product,token)=>call(product,token,'acknowledge')};
 }

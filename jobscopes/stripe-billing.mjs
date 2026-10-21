@@ -3,7 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {billingStore, billingPreview, PLANS, ANALYSIS_PACKS, CARRYOVER_EXPIRY} from './billing.mjs';
+import {billingStore, billingPreview, PLANS, SUBSCRIPTION_PLANS, ANALYSIS_PACKS, CARRYOVER_EXPIRY} from './billing.mjs';
 import {invoiceCharge,intentCharge,chargeAllowance} from './payment-entitlement.mjs';
 import {paidUsage} from './paid-usage.mjs';
 
@@ -17,7 +17,7 @@ const planFor=key=>[...PLANS,...ANALYSIS_PACKS].find(p=>p.id===key)||fail(400,'C
 const validId=(value,prefix)=>typeof value==='string'&&new RegExp('^'+prefix+'[A-Za-z0-9_]+$').test(value)&&value.length<=250;
 const safeUrl=(value,hostname)=>{try{const u=new URL(value);if(u.protocol==='https:'&&u.hostname===hostname&&!u.username&&!u.password)return u.href;}catch{}fail(502,'Stripe returned an unexpected checkout address.');};
 
-export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enabled=false,mode='test',prices=TEST_PRICES,memberCount=()=>1,client,now=()=>Date.now()}={}){
+export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enabled=false,mode='test',prices=TEST_PRICES,memberCount=()=>1,otherSubscription=()=>false,client,now=()=>Date.now()}={}){
  // Fail closed without disrupting existing pilot access if an operator supplies a live key.
  const live=mode==='live';
  const ready=enabled && ['test','live'].includes(mode) && (live?/^sk_live_\S+$/:/^sk_test_\S+$/).test(secretKey) && /^whsec_\S+$/.test(webhookSecret) && /^https:\/\//.test(origin||'') && (!live||(validId(prices.solo,'price_')&&prices.solo!==TEST_PRICES.solo));
@@ -47,14 +47,17 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  const packConfigured=p=>validId(prices[p.id],'price_');
  function status(session){
   const subscriptions=db.prepare('SELECT plan,status,period_end,cancel_at_end FROM subscriptions WHERE company=? ORDER BY period_end DESC').all(session.company_id);
-  if(live)return {mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:[{...planFor('solo'),joe_answers:25}],packs:ANALYSIS_PACKS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),carryover_balance:credits.carryoverBalance(session.company_id),balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
-  return {...billingPreview(),mode:'stripe-test',checkout_enabled:session.role==='Owner',message:'Test checkout only. No real money is collected, and test credits do not increase your paid AI allowance.',test_balance:credits.balance(session.company_id),subscriptions};
+  if(live)return {mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:SUBSCRIPTION_PLANS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),packs:ANALYSIS_PACKS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),carryover_balance:credits.carryoverBalance(session.company_id),balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
+  return {...billingPreview(),plans:PLANS.filter(p=>packConfigured(p)),mode:'stripe-test',checkout_enabled:session.role==='Owner',message:'Test checkout only. No real money is collected, and test credits do not increase your paid AI allowance.',test_balance:credits.balance(session.company_id),subscriptions};
  }
  async function checkout(session,key,consent){
   owner(session);const plan=planFor(key),company=session.company_id;
   if(live&&plan.interval==='pack'&&!packConfigured(plan))fail(503,'This pack is not available yet.');
   if(live&&(consent!==TERMS_VERSION||!session.user_id))fail(400,'Please agree to the subscription terms before continuing.');
-  if(live&&((key!=='solo'&&!ANALYSIS_PACKS.some(p=>p.id===key))||memberCount(company)!==1))fail(409,'Solo is for one user. Contact support about a company with multiple members.');
+  if(live&&!SUBSCRIPTION_PLANS.some(p=>p.id===key)&&!ANALYSIS_PACKS.some(p=>p.id===key))fail(409,'Choose an available plan.');
+  if(!validId(prices[key],'price_'))fail(503,'This plan is not connected to checkout yet.');
+  if(plan.interval!=='pack'&&otherSubscription(company))fail(409,'This company already has a Google Play subscription. Manage it in Google Play before starting another.');
+  if(live&&plan.interval!=='pack'&&memberCount(company)>plan.seats)fail(409,`${plan.name} includes ${plan.seats} user(s). Remove extra members before choosing this plan.`);
   transaction(()=>{
    db.prepare('DELETE FROM checkout_locks WHERE expires<=?').run(now());
    if(db.prepare('SELECT 1 FROM checkout_locks WHERE company=?').get(company))fail(409,'Checkout is already being prepared. Please wait.');
@@ -80,7 +83,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
    const price=await external(()=>stripe.prices.retrieve(prices[key]));
    if(price.livemode!==live||!price.active||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.billing_scheme!=='per_unit'||(plan.interval==='pack'?price.type!=='one_time':price.type!=='recurring'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1))fail(503,'The Stripe price does not match this plan. Ask the owner to check the catalog.');
    const order=open&&!open.session?open:{id:randomUUID(),company,plan:key,created:now()};
-   if(live&&memberCount(company)!==1)fail(409,'Solo includes one user. Company membership changed while checkout was being prepared.');
+   if(live&&plan.interval!=='pack'&&memberCount(company)>plan.seats)fail(409,'Company membership exceeds this plan.');
    if(order!==open)db.prepare('INSERT INTO orders(id,company,plan,created) VALUES(?,?,?,?)').run(order.id,company,key,order.created);
    if(live)db.prepare('INSERT OR IGNORE INTO billing_consents VALUES(?,?,?,?,?)').run(order.id,session.user_id,company,TERMS_VERSION,now());
    const metadata={contractorsight_order:order.id};
@@ -139,8 +142,10 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   }
   credits.adjust(grantId,order.company,adjustment.available,adjustment.reason);
   if(live){
-   credits.grant({id:grantId+':joe',company:order.company,kind:'joe',amount:25,expires,...adjustment});
-   credits.adjust(grantId+':joe',order.company,adjustment.available,adjustment.reason);
+   const joeAmount=credits.grantInfo(grantId+':joe',order.company)?.amount??plan.joe_answers;
+   const joeAdjustment=await external(()=>chargeAllowance(stripe,charge,plan.price_cents,joeAmount,live));
+   credits.grant({id:grantId+':joe',company:order.company,kind:'joe',amount:joeAmount,expires,...joeAdjustment});
+   credits.adjust(grantId+':joe',order.company,joeAdjustment.available,joeAdjustment.reason);
   }
  }
  async function fulfill(sessionId,company){
@@ -201,7 +206,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
       const adjustment=await external(()=>chargeAllowance(stripe,charge,receipt.amount,receipt.credits,live));
       // A receipt can exist without a grant after an interrupted fulfillment.
       try{credits.adjust(receipt.grant_id,receipt.company,adjustment.available,adjustment.reason);}catch(e){if(e.status!==404)throw e;}
-      if(live){try{credits.adjust(receipt.grant_id+':joe',receipt.company,adjustment.available,adjustment.reason);}catch(e){if(e.status!==404)throw e;}}
+      if(live){const joe=credits.grantInfo(receipt.grant_id+':joe',receipt.company);if(joe){const j=await external(()=>chargeAllowance(stripe,charge,receipt.amount,joe.amount,live));credits.adjust(receipt.grant_id+':joe',receipt.company,j.available,j.reason);}}
      }
     }
    }
@@ -215,7 +220,14 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   });inFlight.set(event.id,job);try{await job;}finally{inFlight.delete(event.id);}
  }
  const hasPaidCompany=company=>live&&!!db.prepare('SELECT 1 FROM orders WHERE company=? LIMIT 1').get(company);
+ const seatLimit=company=>{
+  if(!hasPaidCompany(company))return Infinity;
+  const rows=db.prepare("SELECT plan FROM subscriptions WHERE company=? AND status IN ('active','canceled') AND period_end>?").all(company,now());
+  // Team access requires a verified paid, non-revoked grant, not just checkout creation.
+  return rows.reduce((limit,row)=>{const plan=planFor(row.plan);const paid=db.prepare('SELECT id FROM invoices WHERE company=? AND subscription IN (SELECT id FROM subscriptions WHERE company=? AND plan=?)').all(company,company,row.plan).some(i=>{const g=credits.grantInfo('invoice:'+i.id,company);return g&&g.expires>now()&&credits.grantAvailable('invoice:'+i.id,company)>0;});return paid?Math.max(limit,plan.seats):limit;},1);
+ };
  const runSaved=company=>paidUsage(credits,company);
  const balance=(company,kind='analysis')=>credits.balance(company,kind);
- return {ready:true,live,status,checkout,confirm,sync,cancel,webhook,hasPaidCompany,runSaved,balance,close(){credits.close();db.close();}};
+ const hasSubscription=company=>live&&!!db.prepare("SELECT 1 FROM subscriptions WHERE company=? AND (status NOT IN ('canceled','incomplete_expired') OR period_end>?)").get(company,now());
+ return {ready:true,live,hasSubscription,status,checkout,confirm,sync,cancel,webhook,hasPaidCompany,seatLimit,runSaved,balance,close(){credits.close();db.close();}};
 }
