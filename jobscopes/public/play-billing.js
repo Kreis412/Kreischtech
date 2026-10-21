@@ -27,18 +27,31 @@ export async function playBillingView(host,{api,esc}){
  host.querySelector('[data-play-packs]').innerHTML=available.filter(i=>catalog.find(p=>p.id===i.itemId).interval!=='month').map(card).join('');
  host.querySelector('[data-subscription-status]').textContent=(data.subscriptions||[]).map(s=>`${s.plan.toUpperCase()}: current period ends ${new Date(s.period_end).toLocaleDateString()}.`).join(' ');
  message.textContent=available.length?'Choose a plan or pack. Google Play confirms the price and recurring terms before you pay.':'These packs are not available for your Google Play account yet.';
+ let prepared=null;
+ const resetChoice=()=>{host.querySelectorAll('[data-buy]').forEach(b=>{if(b.dataset.originalLabel)b.textContent=b.dataset.originalLabel;});prepared=null;};
  host.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>action(async()=>{
   const item=available.find(p=>p.itemId===button.dataset.buy);
+  if(prepared?.id!==item.itemId||Date.now()>prepared.until){
+   resetChoice();message.textContent='Checking your account before opening Google Play…';
+   try{await write('/api/billing/play/prepare',{product:item.itemId});}
+   catch(e){throw new Error(`${e.message} Google checkout has not opened and no payment was started. Tap the plan or pack to retry.`);}
+   prepared={id:item.itemId,until:Date.now()+60000};
+   button.dataset.originalLabel ||= button.textContent;
+   button.textContent='Continue in Google Play';
+   message.textContent='Your account is ready. Tap Continue in Google Play to review the price before paying.';
+   return;
+  }
+  resetChoice();
   const paymentDetails={total:{label:item.title||'Photo analyses',amount:item.price}};
-  // Preserve the click gesture while preventing payment until eligibility is checked.
-  const ready=write('/api/billing/play/prepare',{product:item.itemId}).then(()=>paymentDetails);
-  const response=await new PaymentRequest([{supportedMethods:METHOD,data:{sku:item.itemId}}],paymentDetails).show(ready);
+  // Open checkout directly from this fresh click, with no outstanding server fetch.
+  const response=await new PaymentRequest([{supportedMethods:METHOD,data:{sku:item.itemId}}],paymentDetails).show();
   message.textContent='Verifying your purchase…';
   try{const result=await confirm({itemId:item.itemId,purchaseToken:response.details.purchaseToken||response.details.token});await response.complete(result.confirmed?'success':'unknown');message.textContent=result.confirmed?'Your purchase is ready. Reopen Plan & usage to see your updated plan and all balances.':'Payment is pending. Tap Check purchases after Google confirms payment.';}
   catch(e){await response.complete('unknown').catch(()=>{});throw new Error('Your payment may have succeeded. Tap Check purchases to finish adding credits. Do not pay again.');}
  }));
  const restore=host.querySelector('[data-restore]');restore.hidden=false;
  restore.onclick=()=>action(async()=>{
+  resetChoice();
   message.textContent='Checking Google Play purchases…';let pending=false;
   for(const p of await service.listPurchases()){if(!catalog.some(pack=>pack.id===p.itemId))continue;const result=await confirm(p);pending ||= !!result.pending;}
   await write('/api/billing/play/sync',{});
