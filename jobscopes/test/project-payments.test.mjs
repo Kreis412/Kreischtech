@@ -1,0 +1,28 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {once} from 'node:events';
+import {createApp} from '../workspace.mjs';
+test('project deposits and progress payments share the company ledger, retries do not duplicate, corrections update balance',async t=>{
+ const dataDir=mkdtempSync(join(tmpdir(),'cs-project-payments-')),server=createApp({dataDir});server.listen(0,'127.0.0.1');await once(server,'listening');
+ t.after(async()=>{await new Promise(r=>server.close(r));rmSync(dataDir,{recursive:true,force:true});});
+ const req=async(path,method='GET',body,status=200)=>{const r=await fetch(`http://127.0.0.1:${server.address().port}`+path,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const result=await r.json();assert.equal(r.status,status,JSON.stringify(result));return result;};
+ const p=await req('/api/projects','POST',{name:'Deposit job',type:'Deck',status:'Planning'},201),path=`/api/company/projects/${p.id}/payments`;
+ let data=await req(path);assert.equal(data.balance_cents,null);
+ await req(path+'/total','PUT',{amount:'2000.00',revision:0});
+ const deposit={request_id:'deposit-request-1',entry_date:'2024-03-01',amount:'500.25',description:'Deposit',type:'Payment received'};
+ data=await req(path,'POST',deposit,201);assert.equal(data.balance_cents,149975);
+ await req(path,'POST',deposit);await req(path,'POST',{...deposit,amount:'600'},409);
+ data=await req(path,'POST',{...deposit,request_id:'progress-2',amount:'700',description:'Progress payment',entry_date:'2025-03-01'},201);
+ assert.equal(data.received_cents,120025);assert.equal(data.balance_cents,79975);assert.equal(data.entries.length,2);
+ const year1=await req('/api/company?year=2024'),year2=await req('/api/company?year=2025');assert.equal(year1.totals.received_cents,50025);assert.equal(year2.totals.received_cents,70000);
+ const entry=data.entries.find(e=>e.description==='Deposit');await req('/api/company/entries/'+entry.id,'PUT',{...entry,amount:'500.25',status:'Voided',void_reason:'Duplicate bank record'});
+ data=await req(path);assert.equal(data.received_cents,70000);assert.equal(data.balance_cents,130000);
+ data=await req(path,'POST',{...deposit,request_id:'refund-3',type:'Customer refund',amount:'100',description:'Customer refund'},201);assert.equal(data.received_cents,60000);assert.equal(data.balance_cents,140000);
+ await req(path+'/total','PUT',{amount:'1000',revision:0},409);
+ data=await req(path+'/total','PUT',{amount:'',revision:1});assert.equal(data.balance_cents,null);assert.equal(data.received_cents,60000);
+ await req('/api/company/projects/missing/payments','GET',undefined,404);
+ await req(path,'POST',{...deposit,request_id:'bad-amount',amount:'-50'},400);
+});

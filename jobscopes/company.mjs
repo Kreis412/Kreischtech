@@ -25,6 +25,8 @@ function addCash(totals, entry) {
 const cash = () => ({ received_cents: 0, spent_cents: 0, net_cents: 0, entry_count: 0 });
 
 export function companyStore(db, estimates) {
+  db.exec(`CREATE TABLE IF NOT EXISTS project_payment_terms(project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,total_cents INTEGER,revision INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS project_payment_requests(request_id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,payload TEXT NOT NULL);`);
   db.exec(`CREATE TABLE IF NOT EXISTS cash_entries (
     id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id), entry_date TEXT NOT NULL,
     type TEXT NOT NULL, category TEXT NOT NULL, amount_cents INTEGER NOT NULL,
@@ -175,7 +177,37 @@ export function companyStore(db, estimates) {
       if (!result.changes) fail(409,'This entry changed on another screen. Refresh and try again.');
     } else db.prepare('INSERT INTO cash_entries(id,project_id,entry_date,type,category,amount_cents,description,status,void_reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),...values,now,now);
   }
+  function projectPayments(projectId){
+    if(!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))fail(404,'Project not found.');
+    const entries=db.prepare("SELECT * FROM cash_entries WHERE project_id=? AND type IN ('Payment received','Customer refund') ORDER BY entry_date DESC,created_at DESC").all(projectId);
+    const totals=cash();entries.forEach(e=>addCash(totals,e));
+    const terms=db.prepare('SELECT * FROM project_payment_terms WHERE project_id=?').get(projectId);
+    return {project_id:projectId,today:localDate(new Date().toISOString()),entries,received_cents:totals.received_cents,total_cents:terms?.total_cents??null,revision:terms?.revision??0,balance_cents:terms?.total_cents==null?null:terms.total_cents-totals.received_cents};
+  }
   return { report, async handle(req,url,json,send) {
+    const paymentRoute=url.pathname.match(/^\/api\/company\/projects\/([\w-]+)\/payments(\/total)?$/);
+    if(paymentRoute){
+      const projectId=paymentRoute[1],current=projectPayments(projectId);
+      if(req.method==='GET'&&!paymentRoute[2]){send(200,current);return true;}
+      if(req.method==='PUT'&&paymentRoute[2]){
+        const b=await json(req);if(Number(b.revision)!==projectPayments(projectId).revision)fail(409,'The project total changed. Refresh and try again.');
+        const value=b.amount;
+        if(value!==''&&value!==null&&(!['string','number'].includes(typeof value)||!/^\d+(\.\d{1,2})?$/.test(String(value))||Number(value)>10000000))fail(400,'Enter the agreed job total, up to $10,000,000.');
+        const cents=value===''||value===null?null:Math.round(Number(value)*100);
+        db.prepare('INSERT INTO project_payment_terms VALUES(?,?,1) ON CONFLICT(project_id) DO UPDATE SET total_cents=excluded.total_cents,revision=revision+1').run(projectId,cents);
+        send(200,projectPayments(projectId));return true;
+      }
+      if(req.method==='POST'&&!paymentRoute[2]){
+        const b=await json(req),requestId=str(b.request_id,'request identifier',100,true);
+        if(b.type!==undefined&&!['Payment received','Customer refund'].includes(b.type))fail(400,'Choose a payment or customer refund.');
+        const entry={project_id:projectId,entry_date:b.entry_date,type:b.type==='Customer refund'?'Customer refund':'Payment received',category:'Other',amount:b.amount,description:b.description,status:'Recorded'};
+        const payload=JSON.stringify(entry),old=db.prepare('SELECT * FROM project_payment_requests WHERE request_id=?').get(requestId);
+        if(old){if(old.project_id!==projectId||old.payload!==payload)fail(409,'This payment request already has different details.');send(200,projectPayments(projectId));return true;}
+        db.exec('BEGIN IMMEDIATE');try{save(null,entry);db.prepare('INSERT INTO project_payment_requests VALUES(?,?,?)').run(requestId,projectId,payload);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+        send(201,projectPayments(projectId));return true;
+      }
+      fail(405,'Method not allowed.');
+    }
     if (url.pathname === '/api/company' && req.method === 'GET') { send(200,report(url)); return true; }
     const job=url.pathname.match(/^\/api\/company\/jobs\/([\w-]+)$/);
     if(job && req.method==='PUT') {

@@ -1,3 +1,4 @@
+import {projectPaymentsView} from '/project-payments.js';
 import {calculatorsView} from '/calculators.js';
 import {appointmentsView} from '/appointments.js';
 import {companyProfile} from '/company-profile.js';
@@ -88,8 +89,9 @@ function projectView() {
   if(['Owner','Manager'].includes(document.body.dataset.role)) tabs.insertAdjacentHTML('beforeend', '<button id="customer-tab" role="tab" aria-controls="tab-content" aria-selected="'+(tab==='customer')+'" data-action="customer">Customer portal</button>');
   tabs.insertAdjacentHTML('afterbegin', `<button id="operations-tab" role="tab" aria-controls="tab-content" aria-selected="${tab==='operations'}" data-action="operations">Project workspace</button>`);
   tabs.insertAdjacentHTML('beforeend', `<button id="materials-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'materials'}" data-action="materials">Materials & estimate</button>`);
+  tabs.insertAdjacentHTML('beforeend', `<button id="payments-tab" role="tab" aria-controls="tab-content" aria-selected="${tab==='payments'}" data-action="payments">Payments</button>`);
   tabs.querySelectorAll('[role=tab]').forEach(button => button.tabIndex = button.getAttribute('aria-selected') === 'true' ? 0 : -1);
-  if(tab==='customer') customerAdmin($('#tab-content'),p,{api,esc}).catch(e=>{if(current?.id===p.id&&tab==='customer')$('#tab-content').textContent=e.message;}); else if(tab === 'operations') operations.mount($('#tab-content'),p).catch(error=>{const area=$('#tab-content');if(area&&current?.id===p.id&&tab==='operations')area.innerHTML=`<p class="error" role="alert">${esc(error.message)}</p><button data-action="operations">Try again</button>`;}); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
+  if(tab==='payments') projectPaymentsView($('#tab-content'),p,{api,write,esc,field,openForm,toast}).catch(e=>{if(current?.id===p.id&&tab==='payments')$('#tab-content').textContent=e.message;}); else if(tab==='customer') customerAdmin($('#tab-content'),p,{api,esc}).catch(e=>{if(current?.id===p.id&&tab==='customer')$('#tab-content').textContent=e.message;}); else if(tab === 'operations') operations.mount($('#tab-content'),p).catch(error=>{const area=$('#tab-content');if(area&&current?.id===p.id&&tab==='operations')area.innerHTML=`<p class="error" role="alert">${esc(error.message)}</p><button data-action="operations">Try again</button>`;}); else if (tab === 'photos') photoView(); else if (tab === 'materials') materials.mount($('#tab-content'), p); else discoveryView();
 }
 function discoveryView() {
   const entries = current.discoveries;
@@ -271,6 +273,7 @@ main.addEventListener('click', e => {
     case 'edit-discovery': discoveryForm(button.dataset.id); break;
     case 'refresh': load(); break;
     case 'clear-filters': filters = { query: '', status: '', type: '' }; dashboard(); break;
+    case 'payments': tab='payments'; projectView(); $('#payments-tab').focus(); break;
     case 'customer': tab='customer'; projectView(); break;
     case 'operations': tab = 'operations'; projectView(); $('#operations-tab').focus(); break;
     case 'discoveries': tab = 'discoveries'; projectView(); $('#discoveries-tab').focus(); break;
@@ -283,7 +286,7 @@ main.addEventListener('click', e => {
   }
 });
 main.addEventListener('keydown', e => {
-  if (e.target.matches('[role=tab]') && ['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); const tabs = ['operations', 'discoveries', 'photos', 'materials']; tab = tabs[(tabs.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : 3)) % 4]; projectView(); $(`#${tab}-tab`).focus(); }
+  if (e.target.matches('[role=tab]') && ['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); const tabs=[...main.querySelectorAll('[role=tab]')].map(b=>b.dataset.action); tab=tabs[(tabs.indexOf(tab)+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length]; projectView(); $(`#${tab}-tab`).focus(); }
 });
 window.addEventListener('hashchange', () => { tab = 'operations'; load(); window.scrollTo(0, 0); });
 window.addEventListener('offline', () => toast('You’re offline. Reconnect before saving changes.', true));
