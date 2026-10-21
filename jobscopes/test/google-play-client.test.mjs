@@ -12,9 +12,15 @@ test('Google client signs server OAuth assertions, fixes package and origin, cac
    return {ok:true,json:async()=>({access_token:'private-access',expires_in:3600})};
   }
   assert.equal(options.headers.Authorization,'Bearer private-access');if(fail)throw Error('secret-token-network-error');
+  if(url.includes('subscriptionsv2'))assert.equal(options.method,'GET');
+  if(url.endsWith(':acknowledge')){assert.equal(options.method,'POST');assert.equal(options.body,'{}');}
   return {ok:true,json:async()=>({purchaseState:0})};
  }});
  await client.get('analysis_5','token/with?characters');await client.consume('analysis_5','token/with?characters');assert.equal(calls.length,3);
  assert.match(calls[1],/applications\/com.kreischtech.contractorsight\/purchases\/products\/analysis_5\/tokens\/token%2Fwith%3Fcharacters$/);
- assert.ok(calls[2].endsWith(':consume'));fail=true;await assert.rejects(client.get('analysis_5','private-token'),e=>e.status===503&&!e.message.includes('secret-token'));
+ assert.ok(calls[2].endsWith(':consume'));
+ await client.subscription('token/with?characters');await client.acknowledge('contractorsight_pro','token/with?characters');
+ assert.match(calls[3],/purchases\/subscriptionsv2\/tokens\/token%2Fwith%3Fcharacters$/);
+ assert.match(calls[4],/purchases\/subscriptions\/contractorsight_pro\/tokens\/token%2Fwith%3Fcharacters:acknowledge$/);
+ fail=true;await assert.rejects(client.get('analysis_5','private-token'),e=>e.status===503&&!e.message.includes('secret-token'));
 });
