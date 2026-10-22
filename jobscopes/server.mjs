@@ -9,6 +9,7 @@ import {aiBudget} from './ai-budget.mjs';
 import {runUnmetered} from './paid-usage.mjs';
 import { prepareHostedPhoto } from './hosted-photo.mjs';
 import { cloudAdapter, CLOUD_MODEL } from './cloud-analysis.mjs';
+import { guestAnalysis } from './guest-analysis.mjs';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { mkdirSync,readFileSync } from 'node:fs';
@@ -26,6 +27,13 @@ async function json(req) {
   try{const b=JSON.parse(Buffer.concat(chunks));if(!b || typeof b!=='object' || Array.isArray(b)) fail(400,'Expected an object.');return b;}
   catch(e){if(e.status)throw e;fail(400,'Invalid JSON.');}
 }
+async function largeJson(req,limit=8*1024*1024) {
+  if(!req.headers['content-type']?.startsWith('application/json')) fail(415,'Expected JSON.');
+  let size=0;const chunks=[];
+  for await(const chunk of req){size+=chunk.length;if(size>limit)fail(413,'Photo is too large. Choose a smaller image.');chunks.push(chunk);}
+  try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))fail(400,'Expected an object.');return b;}
+  catch(e){if(e.status)throw e;fail(400,'Invalid photo request.');}
+}
 export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},playOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
   const weather=weatherService();
@@ -42,6 +50,8 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   const budget=(billing.live||play.ready)&&policy.hosted&&process.env.OPENAI_API_KEY?aiBudget(dataDir,{monthlyUsd:25}):null;
   const cloud=policy.hosted?(process.env.OPENAI_API_KEY?cloudAdapter({dataDir,request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:Number(process.env.AI_PILOT_MAX_ATTEMPTS||0),budget,enforcePilotLimit:true}):null):(existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null);
   const paidCloud=budget?cloudAdapter({dataDir:join(dataDir,'paid-ai'),request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:0,budget}):null;
+  const guestCloud=cloud?{status:()=>({...cloud.status(),paused:budget?.status().paused??false}),analyze:(...args)=>cloud.analyze(...args)}:null;
+  const guestTrials=guestAnalysis(dataDir,{cloud:guestCloud});
   function companyCloud(company){
    if(!cloud)return null;
    const chosen=()=>paidCompany(company)?paidCloud:cloud;
@@ -70,6 +80,15 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(!policy.hosted && req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) fail(403,'Cross-origin requests are blocked.');
       if(req.headers['sec-fetch-site']==='cross-site' && !(policy.hosted && isPublicEntryNavigation(req))) fail(403,'Cross-site requests are blocked.');
       if(await auth.handle(req,url,json,send,res)) return;
+      if(url.pathname==='/api/demo/trial'&&req.method==='GET'){
+        const trial=guestTrials.status(req);res.setHeader('Set-Cookie',`cs_demo=${trial.cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${policy.hosted?'; Secure':''}`);
+        return send(200,{available:trial.available,used:trial.used,monthly_limit_reached:trial.monthly_limit_reached});
+      }
+      if(url.pathname==='/api/demo/analysis'){
+        if(req.method!=='POST')fail(405,'Method not allowed.');
+        const trial=guestTrials.status(req);res.setHeader('Set-Cookie',`cs_demo=${trial.cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${policy.hosted?'; Secure':''}`);
+        return send(200,await guestTrials.analyze(req,await largeJson(req)));
+      }
       if(req.method==='GET') {
         if(['/booking.html','/booking.js','/appointments.js'].includes(url.pathname))return send(200,readFileSync(join(ROOT,'public',url.pathname.slice(1))),url.pathname.endsWith('.html')?'text/html; charset=utf-8':'text/javascript; charset=utf-8');
         if(url.pathname==='/delete-account.html') return send(200,readFileSync(join(ROOT,'public/delete-account.html')),'text/html; charset=utf-8');
@@ -136,7 +155,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   });
   server.on('listening',()=>reminders.start());
   server.requestTimeout=120000;
-  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();play.close();});
+  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();play.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){

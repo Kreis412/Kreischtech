@@ -40,6 +40,16 @@ test('shared links open only the public entry document; cross-site APIs and writ
  for(const path of ['/','/delete-account.html','/privacy.html'])assert.equal((await request(path,'POST')).status,403);
  assert.equal((await request('/api/account/login','POST',{origin:'https://other.test'})).status,403);
 });
+test('guest preview status works before signup and keeps its trial token in a secure cookie',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'contractorsight-guest-preview-'));
+ const server=createProduct({dataDir:dir,publicOrigin:'https://example.test'});server.listen(0,'127.0.0.1');await once(server,'listening');
+ t.after(async()=>{await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});});
+ const request=(path,method='GET',extra={})=>new Promise((resolve,reject)=>{const req=httpRequest({hostname:'127.0.0.1',port:server.address().port,path,method,headers:{host:'example.test','x-forwarded-proto':'https',origin:'https://example.test',...extra}},res=>{let body='';res.on('data',c=>body+=c);res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,data:JSON.parse(body)}));});req.on('error',reject);req.end();});
+ const response=await request('/api/demo/trial');assert.equal(response.status,200);assert.equal(response.data.available,false);assert.equal(response.data.used,false);assert.equal(Object.hasOwn(response.data,'token'),false);
+ const cookie=response.headers['set-cookie'][0];assert.match(cookie,/cs_demo=/);assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);assert.match(cookie,/Secure/);
+ assert.equal((await request('/api/demo/trial','GET',{cookie:cookie.split(';')[0]})).status,200);
+ assert.equal((await request('/api/demo/analysis','POST',{origin:'https://attacker.test'})).status,403);
+});
 test('hosted gateway supports shared project access with Secure sessions',async t=>{
  const dir=mkdtempSync(join(tmpdir(),'contractorsight-hosted-'));
  let server=createProduct({dataDir:dir,publicOrigin:'https://example.test',registrationCode:'test-pilot-code'});
