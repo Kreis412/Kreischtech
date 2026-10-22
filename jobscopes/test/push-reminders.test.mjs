@@ -1,0 +1,18 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {pushReminders,validSubscription,localClock} from '../push-reminders.mjs';import {notificationSettings} from '../public/notifications.js';import {JSDOM} from 'jsdom';
+const sub={endpoint:'https://fcm.googleapis.com/fcm/send/test-token',keys:{p256dh:'A'.repeat(87),auth:'A'.repeat(22)}},owner={user_id:'u',company_id:'c'};
+test('reminders respect local schedule, ownership, once per day, restart, opt-out and deleted membership',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'cs-push-'));let current=Date.parse('2026-10-22T10:59:00Z'),sends=[],member=true;const options={now:()=>current,member:()=>member,send:async(s,p,o)=>{sends.push(JSON.parse(p));assert.equal(o.TTL,3600);}};
+ let service=pushReminders(dir,options);t.after(()=>{service.close();rmSync(dir,{recursive:true,force:true});});const key=service.status(owner).public_key;
+ service.save(owner,{subscription:sub,time:'07:00',timezone:'America/New_York'});await service.tick();assert.equal(sends.length,0);current+=60000;await service.tick();await service.tick();assert.equal(sends.length,1);assert.deepEqual(sends[0],{type:'daily-checkin'});
+ assert.throws(()=>service.status({user_id:'other',company_id:'c'},sub.endpoint),{status:409});service.close();service=pushReminders(dir,options);assert.equal(service.status(owner).public_key,key);await service.tick();assert.equal(sends.length,1);
+ current+=86400000;await service.tick();assert.equal(sends.length,2);service.remove(owner,sub.endpoint);current+=86400000;await service.tick();assert.equal(sends.length,2);
+ service.save(owner,{subscription:sub,time:'07:00',timezone:'America/New_York'});member=false;current+=86400000;await service.tick();assert.equal(service.status(owner,sub.endpoint).enabled,false);
+ assert.equal(localClock(Date.parse('2026-11-01T12:00:00Z'),'America/New_York').time,'07:00');
+});
+test('push endpoint validation prevents arbitrary server requests',()=>{assert.throws(()=>validSubscription({...sub,endpoint:'https://127.0.0.1/private'}),{status:400});assert.throws(()=>validSubscription({...sub,endpoint:'https://fcm.googleapis.com.evil.test/foo'}),{status:400});assert.throws(()=>validSubscription({...sub,endpoint:'http://fcm.googleapis.com/foo'}),{status:400});assert.throws(()=>validSubscription({...sub,keys:{auth:'bad',p256dh:'bad'}}),{status:400});});
+test('permission is requested only after Enable, denial never subscribes or saves',async t=>{
+ const dom=new JSDOM('<main></main>',{url:'https://example.com'});let asks=0,subscribes=0,writes=0;const notification={permission:'default',requestPermission:()=>{asks++;return Promise.resolve('denied');}};
+ const values={window:dom.window,document:dom.window.document,navigator:{serviceWorker:{ready:Promise.resolve({pushManager:{getSubscription:async()=>null,subscribe:async()=>{subscribes++;}}})}},Notification:notification};dom.window.Notification=notification;dom.window.PushManager=function(){};
+ for(const [k,v] of Object.entries(values)){const old=Object.getOwnPropertyDescriptor(globalThis,k);Object.defineProperty(globalThis,k,{value:v,configurable:true,writable:true});t.after(()=>{if(old)Object.defineProperty(globalThis,k,old);else delete globalThis[k];});}t.after(()=>dom.window.close());
+ const host=document.querySelector('main');await notificationSettings(host,{api:async(p,o)=>{if(o?.method==='PUT')writes++;return {time:'07:00',enabled:false,public_key:'abc'};},esc:String});assert.equal(asks,0);await host.querySelector('[data-enable]').onclick();assert.equal(asks,1);assert.equal(subscribes,0);assert.equal(writes,0);assert.match(host.textContent,/not enabled/);
+});

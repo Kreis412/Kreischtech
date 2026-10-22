@@ -1,3 +1,4 @@
+import {stopDeviceReminders} from '/notifications.js';
 export function accountUI({api,write,esc,host,openForm,field,selectField,toast}) {
   let state;
   async function refresh(){state=await api('/api/account/session');return state;}
@@ -17,7 +18,7 @@ export function accountUI({api,write,esc,host,openForm,field,selectField,toast})
   async function check(){await refresh();if(!state.user){renderLogin();return false;}
     document.body.dataset.signedIn='true';document.body.dataset.role=state.company.role;
     document.querySelector('#account-bar').innerHTML=`<span><strong>${esc(state.company.name)}</strong> · ${esc(state.company.role)}<small>${esc(state.user.name)}</small></span><button id="sign-out">Sign out</button>`;
-    document.querySelector('#sign-out').onclick=async()=>{try{await write('/api/account/logout','POST',{});location.reload();}catch(e){toast(e.message,true);}};return true;
+    document.querySelector('#sign-out').onclick=async()=>{try{await stopDeviceReminders(api);await write('/api/account/logout','POST',{});location.reload();}catch(e){toast(e.message,true);}};return true;
   }
   async function mount(){
     const team=state.company.role==='Owner'?await api('/api/account/team'):null;

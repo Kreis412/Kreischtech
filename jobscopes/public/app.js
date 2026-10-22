@@ -73,7 +73,7 @@ function dashboard() {
   main.insertAdjacentHTML('beforeend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, compare Solo, Pro and Team, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
   const identity=main.querySelector('#home-profession');
   api('/api/business-expertise').then(profile=>{if(identity?.isConnected&&profile.profession)identity.textContent=profile.profession;}).catch(()=>{});
-  dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc});
+  dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc,force:location.hash==='#checkin'});
   renderCards();
   $('#search').addEventListener('input', e => { filters.query = e.target.value; renderCards(); });
   $('#status-filter').addEventListener('change', e => { filters.status = e.target.value; renderCards(); });
@@ -250,7 +250,7 @@ async function load() {
       if(location.hash==='#settings/security') await security.mount(main);
       else if(location.hash==='#settings/profile') await companyProfile(main,{api,esc});
       else if(location.hash==='#settings/billing') await billingView(main,{api,esc});
-      else if(location.hash==='#settings/checkin') checkinSettings(main,{session:account.getSession()});
+      else if(location.hash==='#settings/checkin') checkinSettings(main,{session:account.getSession(),api,esc});
       else if(location.hash==='#settings/appearance') appearanceView();
       else if(location.hash==='#settings/expertise') await expertiseSettings();
       else if(location.hash==='#settings/assistant') joe.settings(main);

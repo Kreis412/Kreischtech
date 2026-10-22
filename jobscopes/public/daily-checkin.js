@@ -1,9 +1,11 @@
+import {notificationSettings} from './notifications.js';
 export const localDay=(d=new Date())=>[d.getFullYear(),d.getMonth()+1,d.getDate()].join('-');
 export const checkinKey=session=>'cs-checkin:'+session.company.id+':'+session.user.email;
 function read(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}}
 function save(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
-export function checkinSettings(host,{session}){
+export function checkinSettings(host,{session,api,esc}){
  const key=checkinKey(session);host.innerHTML='<section class="panel"><h1>Daily check-in</h1><label><input type="checkbox" id="daily-enabled"> Show my daily check-in automatically</label><p>A short weather, to-do and financial summary. Preferences and personal tasks are saved for this account in this browser, not synced between devices.</p><p>Weather asks for device location when you tap Use my location. No background tracking.</p><p role="status"></p></section>';
+ notificationSettings(host,{api,esc}).catch(()=>{});
  const input=host.querySelector('input');input.checked=read(key+':enabled',true);input.onchange=()=>{const ok=save(key+':enabled',input.checked);if(input.checked)save(key+':day','');host.querySelector('[role=status]').textContent=ok?'Preference saved.':'This browser could not save your preference.';};
 }
 export function dailyCheckin(host,{session,projects,role,api,esc,force=false}){
