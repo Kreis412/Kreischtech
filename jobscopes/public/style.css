@@ -284,3 +284,5 @@ input,select,textarea{font-size:16px} :focus-visible{outline:3px solid #168f93;o
 @media(max-width:700px){.home-tool-grid{grid-template-columns:1fr 1fr}.home-next-job{flex-direction:column;gap:5px}.home-camera{width:100%}.home-photo-picker .upload-actions{display:grid;grid-template-columns:1fr}}@media(max-width:390px){.home-tool-grid{grid-template-columns:1fr}}
 
 .daily-checkin{margin-bottom:20px}.daily-task{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0}.daily-checkin input[type=checkbox]{width:auto}.daily-checkin input:not([type=checkbox]){width:100%}.daily-checkin .home-tool-grid section{min-width:0}.daily-checkin .muted{font-size:.85rem}@media(max-width:700px){.daily-checkin .home-tool-grid{grid-template-columns:1fr}}
+
+.analytics-choice{position:fixed;bottom:16px;left:16px;right:16px;max-width:640px;margin:auto;z-index:1500;box-shadow:0 8px 40px #0006}.analytics-choice button{min-height:44px}

@@ -1,3 +1,4 @@
+import {initAnalytics,analyticsSettings} from '/analytics.js';
 import {dailyCheckin,checkinSettings} from '/daily-checkin.js';
 import {homeOverview, photoProjectPicker} from '/home.js';
 import {projectPaymentsView} from '/project-payments.js';
@@ -223,7 +224,7 @@ async function expertiseSettings(){
  form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await write('/api/business-expertise','PUT',Object.fromEntries(new FormData(form)));main.querySelector('#expertise-status').textContent='Profession saved. Joe and new photo analyses will use it.';}catch(error){main.querySelector('#expertise-status').textContent=error.message;}finally{b.disabled=false;}};
 }
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/checkin','Daily check-in'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/privacy','Privacy & analytics'],['#settings/checkin','Daily check-in'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView() {
   const dark=document.documentElement.dataset.theme==='dark';
@@ -250,6 +251,7 @@ async function load() {
       if(location.hash==='#settings/security') await security.mount(main);
       else if(location.hash==='#settings/profile') await companyProfile(main,{api,esc});
       else if(location.hash==='#settings/billing') await billingView(main,{api,esc});
+      else if(location.hash==='#settings/privacy') analyticsSettings(main);
       else if(location.hash==='#settings/checkin') checkinSettings(main,{session:account.getSession(),api,esc});
       else if(location.hash==='#settings/appearance') appearanceView();
       else if(location.hash==='#settings/expertise') await expertiseSettings();
@@ -298,6 +300,7 @@ main.addEventListener('keydown', e => {
 });
 window.addEventListener('hashchange', () => { tab = 'operations'; load(); window.scrollTo(0, 0); });
 window.addEventListener('offline', () => toast('You’re offline. Reconnect before saving changes.', true));
+initAnalytics();
 load();
 
 // Keep photo viewing inside the authenticated app rather than a raw-image tab.
