@@ -6,7 +6,7 @@
 | Pro | 39 | 1 | 75 | 100 |
 | Team | 79 | 5 including owner | 150 shared | 250 shared |
 
-Monthly allowances expire at the paid billing-period end. Purchased analysis packs carry over. Customer portal visitors do not consume user seats. Existing subscriptions are not automatically migrated; changing an existing subscription requires support to avoid duplicate billing.
+Monthly allowances expire at the paid billing-period end. Purchased analysis packs carry over. Customer portal visitors do not consume user seats. Existing subscriptions are not automatically migrated. Owners can request a change at the next renewal through the original provider, after a price/date confirmation. Stripe uses a schedule on the existing subscription; Google Play uses deferred replacement. Scheduling keeps current credit usage intact and does not charge immediately. Purchased packs carry over. Downgrades enforce the smaller membership limit for new invites. Website schedules can be canceled before renewal. Google subscriptions are managed in Google Play.
 
 ## Production configuration
 
@@ -28,3 +28,9 @@ A physical-phone Google Play checkout and completed purchase have NOT been obser
 The existing global AI spend cap remains unchanged ($25/month default). No new spend authorization or recurring monitoring was created. Reconciliation refreshes Play subscriptions during use/status checks; no real-time developer notification endpoint was added.
 
 Project partial payments are separately deployed in `b0916d0` plus startup routing fix `adf8949`. Record payments through the project Payments tab; they share the company cash ledger, with an agreed total, balance, refund history, and idempotent saves.
+
+## Renewal-date changes
+
+Implemented in `stripe-plan-changes.mjs`, `stripe-billing.mjs`, `play-subscriptions.mjs`, the billing views and authenticated routes. 136 automated tests pass, covering receipt transfer without resetting use, paid renewal, retries/restarts, foreign-account rejection, canceled changes, canceled renewals, downgrade capacity, refunds and existing application behavior. No real customer subscription was changed during verification. Physical-device deferred replacement and actual provider renewal remain acceptance checks, not claimed as observed. User separately confirmed Pro and Team checkout now open on the phone.
+
+Stripe changes are restricted to the simple monthly plans created by this service. An externally managed schedule or a subscription needing payment recovery requires support. Google Play deferred changes require the installed billing-enabled app. Existing lazy reconciliation remains; no new background polling or RTDN configuration was added.

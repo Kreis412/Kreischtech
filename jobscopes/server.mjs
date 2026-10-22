@@ -1,3 +1,4 @@
+import {weatherService} from './weather.mjs';
 import {playBilling} from './play-billing.mjs';
 import {appointments} from './appointments.mjs';
 import {googlePlayClient} from './google-play-client.mjs';
@@ -26,6 +27,7 @@ async function json(req) {
 }
 export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},playOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
+  const weather=weatherService();
   const portal=customerPortal(dataDir);
   const booking=appointments(dataDir);
   const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>{const stripePaid=billing?.hasPaidCompany(company),playPaid=play?.hasPaidCompany(company);return stripePaid||playPaid?Math.max(stripePaid?(billing.seatLimit?.(company)??1):1,playPaid?play.seatLimit(company):1):Infinity;}}),workspaces=new Map();
@@ -71,7 +73,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(url.pathname==='/delete-account.html') return send(200,readFileSync(join(ROOT,'public/delete-account.html')),'text/html; charset=utf-8');
         if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        const files={'project-payments.js':'text/javascript','calculators.js':'text/javascript','customer.html':'text/html','customer.js':'text/javascript','customer-admin.js':'text/javascript','company-profile.js':'text/javascript','terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','play-billing.js':'text/javascript','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
+        const files={'daily-checkin.js':'text/javascript','home.js':'text/javascript','project-payments.js':'text/javascript','calculators.js':'text/javascript','customer.html':'text/html','customer.js':'text/javascript','customer-admin.js':'text/javascript','company-profile.js':'text/javascript','terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','play-billing.js':'text/javascript','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
         if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);
       }
       if(url.pathname==='/api/customer/messages'){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,portal.customerMessage(req.headers['x-customer-token'],(await json(req)).message));}
@@ -85,6 +87,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(url.pathname==='/api/booking/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.publicStatus(req.headers['x-booking-token']));}
       if(url.pathname==='/api/booking'){if(req.method==='GET')return send(200,booking.publicView(req.headers['x-booking-token'],url.searchParams.get('date')));if(req.method==='POST')return send(201,booking.request(req.headers['x-booking-token'],await json(req)));fail(405,'Method not allowed.');}
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(url.pathname==='/api/weather'){if(req.method!=='POST')fail(405,'Method not allowed.');const b=await json(req);return send(200,await weather(session.user_id,b.latitude,b.longitude));}
       if(url.pathname==='/api/appointments/settings'){if(req.method==='GET')return send(200,booking.settings(session));if(req.method==='PUT')return send(200,booking.settings(session,await json(req)));fail(405,'Method not allowed.');}
       if(url.pathname==='/api/appointments'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.list(session));}
       const appointmentMatch=url.pathname.match(/^\/api\/appointments\/([\w-]+)$/);if(appointmentMatch){if(req.method!=='PUT')fail(405,'Method not allowed.');return send(200,booking.update(session,appointmentMatch[1],await json(req)));}
@@ -99,6 +102,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         const b=await json(req);
         if(url.pathname==='/api/billing/play/confirm')return send(200,await play.confirm(session,b.product,b.token));
         if(url.pathname==='/api/billing/play/prepare')return send(200,play.prepare(session,b.product));
+        if(url.pathname==='/api/billing/play/change')return send(200,await play.prepareChange(session,b.product));
         if(url.pathname==='/api/billing/play/sync'){if(session.role!=='Owner')fail(403,'Only the owner can check purchases.');await play.reconcile(session.company_id,true);return send(200,play.status(session));}
         fail(404,'Billing action not found.');
       }
@@ -108,6 +112,9 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(req.method!=='POST')fail(405,'Method not allowed.');
         const b=await json(req);
         if(url.pathname==='/api/billing/checkout')return send(200,await billing.checkout(session,b.plan,b.terms_version));
+        if(url.pathname==='/api/billing/change/preview')return send(200,await billing.previewChange(session,b.plan));
+        if(url.pathname==='/api/billing/change/confirm')return send(200,await billing.confirmChange(session,b.quote_id));
+        if(url.pathname==='/api/billing/change/cancel')return send(200,await billing.cancelChange(session));
         if(url.pathname==='/api/billing/confirm')return send(200,await billing.confirm(session,b.session_id));
         if(url.pathname==='/api/billing/sync')return send(200,await billing.sync(session));
         if(url.pathname==='/api/billing/cancel')return send(200,await billing.cancel(session));

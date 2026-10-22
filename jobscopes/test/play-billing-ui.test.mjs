@@ -57,3 +57,23 @@ test('payment status check displays progress and a persistent completion message
  assert.equal(button.disabled,true);assert.equal(button.textContent,'Checking payment…');finish();await pending;
  assert.equal(checks,1);assert.match(host.querySelector('#billing-message').textContent,/Payment check complete/);assert.equal(host.querySelector('[data-sync]').disabled,false);
 });
+
+test('Play change plan uses the existing receipt and deferred replacement after review',async t=>{
+ const host=browser(t),calls=[];let method;
+ window.getDigitalGoodsService=async()=>({getDetails:async()=>[{itemId:'contractorsight_pro',title:'Pro',price:{currency:'USD',value:'39.00'}}]});
+ const old=globalThis.PaymentRequest;globalThis.PaymentRequest=class{constructor(m){method=m[0];}async show(){return {details:{purchaseToken:'new-receipt'},complete:async()=>{}};}};t.after(()=>{globalThis.PaymentRequest=old;});
+ const end=Date.now()+86400000,api=async(path,options)=>{calls.push(path);if(path.endsWith('/change'))return {effective_at:end,replacement:{oldSku:'contractorsight_solo',purchaseToken:'old-receipt',prorationMode:'deferred'}};if(path.endsWith('/confirm'))return {confirmed:true,scheduled:true,effective_at:end,balance:24,joe_balance:24};return {ready:true,purchase_enabled:true,has_subscription:true,balance:24,joe_balance:24,subscriptions:[{plan:'solo',period_end:end}],plans:[{id:'contractorsight_pro',plan:'pro',name:'Pro',interval:'month',seats:1,analyses:75,joe_answers:100}],packs:[]};};
+ await playBillingView(host,{api,esc});const b=host.querySelector('[data-change]');assert.equal(b.textContent,'Change to Pro');
+ await b.onclick();assert.equal(method,undefined);assert.match(host.textContent,/No charge today/);assert.match(host.textContent,/\$39.00/);
+ await b.onclick();assert.deepEqual(method.data,{sku:'contractorsight_pro',oldSku:'contractorsight_solo',purchaseToken:'old-receipt',prorationMode:'deferred'});assert.match(host.textContent,/plan change is scheduled/);assert.ok(!calls.includes('/api/billing/play/prepare'));
+});
+
+test('website plan change shows price and renewal date and does not schedule until confirmation',async t=>{
+ const host=browser(t),previous=globalThis.sessionStorage;globalThis.sessionStorage=window.sessionStorage;t.after(()=>{if(previous===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=previous;});
+ let confirmed=0,scheduled=false;const end=Date.now()+86400000;
+ const api=async(path,options)=>{if(path.endsWith('/preview'))return {quote_id:'quote',plan:'Pro',price_cents:3900,effective_at:end};if(path.endsWith('/confirm')){assert.equal(JSON.parse(options.body).quote_id,'quote');confirmed++;scheduled=true;return {};}
+ return {mode:'stripe-live',currency:'USD',balance:24,joe_balance:24,packs:[],checkout_enabled:true,scheduled_change:scheduled?{plan:'pro',effective_at:end,state:'scheduled'}:null,plans:[{id:'solo',name:'Solo',price_cents:1900,seats:1,analyses:25,joe_answers:25,purchase_enabled:true},{id:'pro',name:'Pro',price_cents:3900,seats:1,analyses:75,joe_answers:100,purchase_enabled:true}],subscriptions:[{plan:'solo',status:'active',period_end:end}]};};
+ await billingView(host,{api,esc});await host.querySelector('[data-change]').onclick();assert.equal(confirmed,0);assert.match(host.textContent,/No charge today/);assert.match(host.textContent,/\$39.00\/month/);
+ host.querySelector('[data-dismiss-change]').onclick();assert.equal(confirmed,0);
+ await host.querySelector('[data-change]').onclick();await host.querySelector('[data-confirm-change]').onclick();assert.equal(confirmed,1);assert.match(host.textContent,/Scheduled plan change/);assert.match(host.textContent,/24 photo analyses remaining/);
+});

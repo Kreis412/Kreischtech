@@ -1,3 +1,5 @@
+import {dailyCheckin,checkinSettings} from '/daily-checkin.js';
+import {homeOverview, photoProjectPicker} from '/home.js';
 import {projectPaymentsView} from '/project-payments.js';
 import {calculatorsView} from '/calculators.js';
 import {appointmentsView} from '/appointments.js';
@@ -61,14 +63,17 @@ function toast(message, error = false) {
 const empty = (title, description, action = '') => `<div class="empty"><div class="empty-icon" aria-hidden="true">▦</div><h2>${title}</h2><p>${description}</p>${action}</div>`;
 function dashboard() {
   const active = projects.filter(p => !['Complete', 'On hold'].includes(p.status)).length;
-  main.innerHTML = `<section class="page-heading"><div><div class="eyebrow">A clearer view of every job.</div><h1>Your projects</h1><p>The details, discoveries, and next steps. All in one place.</p></div><button class="primary" data-action="new-project"><span aria-hidden="true">＋</span> New project</button></section>
-    ${projects.length===0?'<section class="panel first-job"><div class="eyebrow">START WITH ONE REAL JOB</div><h2>Turn a site visit into a clearer estimate.</h2><ol><li><strong>Create your project.</strong> Add the job name and what you plan to do.</li><li><strong>Add a photo or blueprint.</strong> Review AI suggestions for concerns and missing details.</li><li><strong>Build your estimate.</strong> Choose materials, add labor and set your markup.</li></ol><button class="primary" data-action="new-project">Start my first job</button><p class="muted">You review every finding. AI analysis uses the displayed pilot allowance.</p></section>':''}
+  main.innerHTML = `<section class="page-heading"><div><div class="eyebrow">A clearer view of every job.</div><h1>Your workspace</h1><p>From the first site photo to the final payment.</p></div><button class="primary" data-action="new-project"><span aria-hidden="true">＋</span> New project</button></section>
+    ${homeOverview({projects,session:account.getSession(),role:document.body.dataset.role,esc})}
     <section class="stats" aria-label="Workspace totals"><div class="stat"><span>Active projects</span><strong>${active.toString().padStart(2, '0')}</strong></div><div class="stat"><span>Open discoveries</span><strong>${projects.reduce((n,p) => n + p.open_count, 0).toString().padStart(2, '0')}</strong></div><div class="stat"><span>Site photos</span><strong>${projects.reduce((n,p) => n + p.photo_count, 0).toString().padStart(2, '0')}</strong></div></section>
     <section><div class="section-head"><h2>Project board <span class="count">${projects.length}</span></h2><button class="subtle" data-action="refresh">↻ Refresh</button></div>
     <div class="filters"><label class="search filter-label">Search projects<input id="search" type="search" placeholder="Search projects, clients, or addresses…" value="${esc(filters.query)}"></label><label class="filter-label">Filter by status<select id="status-filter"><option value="">All statuses</option>${options(statuses, filters.status)}</select></label><label class="filter-label">Filter by project type<select id="type-filter"><option value="">All project types</option>${options(types, filters.type)}</select></label></div><div id="project-list"></div></section>
     <div class="field-note"><span class="note-icon" aria-hidden="true">↳</span><div><strong>Good projects start with good observations.</strong>Capture what you find on site. Turn the unknowns into a clear next step.</div></div>`;
   const playBuild=isPlayDistribution(location.search,document.referrer,sessionStorage);
-  main.querySelector('.page-heading').insertAdjacentHTML('afterend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, compare Solo, Pro and Team, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
+  main.insertAdjacentHTML('beforeend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, compare Solo, Pro and Team, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
+  const identity=main.querySelector('#home-profession');
+  api('/api/business-expertise').then(profile=>{if(identity?.isConnected&&profile.profession)identity.textContent=profile.profession;}).catch(()=>{});
+  dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc});
   renderCards();
   $('#search').addEventListener('input', e => { filters.query = e.target.value; renderCards(); });
   $('#status-filter').addEventListener('change', e => { filters.status = e.target.value; renderCards(); });
@@ -218,7 +223,7 @@ async function expertiseSettings(){
  form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await write('/api/business-expertise','PUT',Object.fromEntries(new FormData(form)));main.querySelector('#expertise-status').textContent='Profession saved. Joe and new photo analyses will use it.';}catch(error){main.querySelector('#expertise-status').textContent=error.message;}finally{b.disabled=false;}};
 }
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/checkin','Daily check-in'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView() {
   const dark=document.documentElement.dataset.theme==='dark';
@@ -245,6 +250,7 @@ async function load() {
       if(location.hash==='#settings/security') await security.mount(main);
       else if(location.hash==='#settings/profile') await companyProfile(main,{api,esc});
       else if(location.hash==='#settings/billing') await billingView(main,{api,esc});
+      else if(location.hash==='#settings/checkin') checkinSettings(main,{session:account.getSession()});
       else if(location.hash==='#settings/appearance') appearanceView();
       else if(location.hash==='#settings/expertise') await expertiseSettings();
       else if(location.hash==='#settings/assistant') joe.settings(main);
@@ -259,13 +265,15 @@ async function load() {
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Insights' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }
-    else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; $('#breadcrumb').textContent = 'Projects'; dashboard(); }
+    else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; $('#breadcrumb').textContent = 'Home'; dashboard(); }
   } catch (e) { if (ticket === loadId) main.innerHTML = empty('Workspace unavailable', esc(e.message), '<button data-action="refresh">Try again</button> <a class="button" href="#">All projects</a>'); }
   finally { if (ticket === loadId) {main.removeAttribute('aria-busy');joe.widgets(current);} }
 }
 main.addEventListener('click', e => {
   const button = e.target.closest('[data-action]'); if (!button) return;
   switch (button.dataset.action) {
+    case 'daily-checkin': main.querySelector('.daily-checkin')?.remove();dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc,force:true});break;
+    case 'home-photo': photoProjectPicker({projects,api,esc,onNew:()=>projectForm(),onOpen:(p,mode)=>{current=p;tab='photos';history.pushState(null,'','#project/'+p.id);$('#breadcrumb').textContent='Project workspace';projectView();joe.hide();if(mode==='analyze')toast('Choose Analyze photo below a saved picture.');else $(mode==='upload'?'#photo-input':'#camera-input').click();}}); break;
     case 'new-project': projectForm(); break;
     case 'edit-project': projectForm(true); break;
     case 'delete-project': deleteProjectForm(); break;

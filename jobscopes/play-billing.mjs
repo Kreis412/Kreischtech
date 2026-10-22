@@ -74,8 +74,9 @@ export function playBilling({dataDir,client,enabled=false,allowTest=false,produc
   });
  }
  return {ready,confirm,reconcile,
+  prepareChange:(s,product)=>{owner(s);if(!ready)fail(503,'Google Play purchases are not connected.');rateLimit(s.company_id);return serial(()=>subscriptions.prepareChange(s,product));},
   prepare:(s,product)=>{owner(s);if(!ready)fail(503,'Google Play purchases are not connected.');return subscriptions.catalog.some(p=>p.id===product)?subscriptions.prepare(s,product):(packFor(product),{ready:true});},
-  status:s=>({ready,purchase_enabled:ready&&s.role==='Owner',plans:subscriptions.catalog,subscriptions:subscriptions.status(s.company_id),has_subscription:!!subscriptions.active(s.company_id).length||otherSubscription(s.company_id),packs:ANALYSIS_PACKS,balance:credits.balance(s.company_id),joe_balance:credits.balance(s.company_id,'joe'),carryover_balance:credits.carryoverBalance(s.company_id)}),
+  status:s=>({ready,purchase_enabled:ready&&s.role==='Owner',scheduled_change:subscriptions.scheduled(s.company_id),plans:subscriptions.catalog,subscriptions:subscriptions.status(s.company_id),has_subscription:!!subscriptions.active(s.company_id).length||otherSubscription(s.company_id),packs:ANALYSIS_PACKS,balance:credits.balance(s.company_id),joe_balance:credits.balance(s.company_id,'joe'),carryover_balance:credits.carryoverBalance(s.company_id)}),
   hasSubscription:company=>!!subscriptions.active(company).length,
   seatLimit:subscriptions.seatLimit,
   hasPaidCompany:company=>subscriptions.hasPaidCompany(company)||!!db.prepare('SELECT 1 FROM play_receipts WHERE company=? LIMIT 1').get(company),

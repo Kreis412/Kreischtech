@@ -214,3 +214,43 @@ test('unconfigured tiers and oversized teams cannot start checkout',async t=>{
  await assert.rejects(f.billing.checkout(owner,'pro','2026-10-01'),{status:503});
  await assert.rejects(f.billing.checkout(owner,'team','2026-10-01'),{status:409});assert.equal(f.creates,0);
 });
+
+function schedules(f){
+ const saved=new Map(),requests=new Map();let updates=0,failUpdate=false;
+ f.client.subscriptionSchedules={
+  create:async(p,o)=>{if(requests.has(o.idempotencyKey))return structuredClone(requests.get(o.idempotencyKey));const sub=f.subs.get(p.from_subscription),end=sub.items.data[0].current_period_end;const s={id:'sub_sched_'+saved.size,livemode:true,subscription:sub.id,current_phase:{start_date:end-30*86400,end_date:end}};saved.set(s.id,s);requests.set(o.idempotencyKey,s);sub.schedule=s.id;return structuredClone(s);},
+  retrieve:async id=>structuredClone(saved.get(id)),
+  update:async(id,p)=>{updates++;assert.equal(p.proration_behavior,'none');assert.equal(p.phases[0].items[0].price,f.options.prices.solo);assert.equal(p.phases[1].items[0].price,f.options.prices.team);Object.assign(saved.get(id),p);if(failUpdate)throw Error('Lost response');return structuredClone(saved.get(id));},
+  release:async id=>{saved.get(id).status='released';f.subs.get(saved.get(id).subscription).schedule=null;return saved.get(id);}
+ };
+ return {saved,get updates(){return updates;},fail:v=>failUpdate=v};
+}
+
+test('Stripe plan change requires confirmation, survives retry, and grants new allowances only on paid renewal',async t=>{
+ const f=fixture(t,true),mock=schedules(f);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
+ await f.billing.runSaved(owner.company_id)('analysis','used',async()=>true);
+ const q=await f.billing.previewChange(owner,'team');assert.equal(q.price_cents,7900);assert.equal(mock.saved.size,0);assert.equal(f.billing.balance(owner.company_id),24);
+ await assert.rejects(f.billing.confirmChange({...owner,company_id:other.company_id},q.quote_id),{status:404});
+ mock.fail(true);await assert.rejects(f.billing.confirmChange(owner,q.quote_id));assert.equal(mock.saved.size,1);
+ f.restart();mock.fail(false);await f.billing.confirmChange(owner,q.quote_id);await f.billing.confirmChange(owner,q.quote_id);
+ assert.equal(mock.saved.size,1);assert.equal(f.creates,1);assert.equal(f.billing.balance(owner.company_id),24);assert.equal(f.billing.seatLimit(owner.company_id),1);
+ assert.equal(f.billing.status(owner).scheduled_change.plan,'team');await assert.rejects(f.billing.previewChange(owner,'pro'),{status:409});
+ // The processor changes the existing subscription at renewal; the old checkout remains immutable.
+ f.options.now=()=>q.effective_at+1000;f.restart();const sub=f.subs.get(s.subscription),end=q.effective_at/1000+30*86400;
+ sub.items.data[0]={price:{id:f.options.prices.team},quantity:1,current_period_end:end};sub.latest_invoice='in_team_renewal';
+ const invoice={...structuredClone(f.invoices.get(s.invoice)),id:sub.latest_invoice,amount_paid:7900,billing_reason:'subscription_cycle',payment_intent:'pi_team_renewal',lines:{has_more:false,data:[{pricing:{price_details:{price:f.options.prices.team}},quantity:1,period:{start:q.effective_at/1000,end}}]}};
+ f.invoices.set(invoice.id,invoice);f.intents.set(invoice.payment_intent,{id:invoice.payment_intent,livemode:true,status:'succeeded',currency:'usd',amount_received:7900,latest_charge:'ch_team_renewal'});
+ f.charges.set('ch_team_renewal',{id:'ch_team_renewal',payment_intent:invoice.payment_intent,livemode:true,status:'succeeded',paid:true,currency:'usd',amount:7900,amount_refunded:0,disputed:false});
+ await f.billing.sync(owner);assert.equal(f.billing.status(owner).subscriptions[0].plan,'team');assert.equal(f.billing.balance(owner.company_id),150);assert.equal(f.billing.balance(owner.company_id,'joe'),250);assert.equal(f.billing.seatLimit(owner.company_id),5);
+ await f.event('invoice.paid',{id:invoice.id});assert.equal(f.billing.balance(owner.company_id),150);
+ f.charges.get('ch_team_renewal').amount_refunded=7900;await f.event('charge.refunded',{id:'ch_team_renewal'});assert.equal(f.billing.balance(owner.company_id),0);assert.equal(f.billing.seatLimit(owner.company_id),1);
+});
+
+test('Stripe canceled change preserves subscription; stale, foreign and wrong-price confirmations are blocked',async t=>{
+ const f=fixture(t,true),mock=schedules(f);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
+ await assert.rejects(f.billing.previewChange({...owner,role:'Manager'},'team'),{status:403});
+ const q=await f.billing.previewChange(owner,'team');await f.billing.confirmChange(owner,q.quote_id);await f.billing.cancelChange(owner);
+ assert.equal(f.billing.status(owner).scheduled_change,null);assert.equal(f.billing.balance(owner.company_id),25);assert.equal(f.subs.get(s.subscription).status,'active');assert.equal([...mock.saved.values()][0].status,'released');
+ await assert.rejects(f.billing.confirmChange(owner,q.quote_id),{status:409});
+ const next=await f.billing.previewChange(owner,'team');f.wrongPrice();await assert.rejects(f.billing.confirmChange(owner,next.quote_id),{status:409});assert.equal(mock.saved.size,1);
+});

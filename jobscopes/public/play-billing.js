@@ -20,12 +20,12 @@ export async function playBillingView(host,{api,esc}){
  const available=details.filter(item=>catalog.some(p=>p.id===item.itemId));
  const card=item=>{
   const p=catalog.find(p=>p.id===item.itemId),price=new Intl.NumberFormat(navigator.language,{style:'currency',currency:item.price.currency}).format(Number(item.price.value));
-  if(p.interval==='month')return `<article class="plan-card"><h2>${esc(p.name)}</h2><p>${esc(price)} / month</p><p>${esc(p.seats)} user${p.seats===1?'':'s'} · ${esc(p.analyses)} photo analyses · ${esc(p.joe_answers)} Joe answers per month${p.seats>1?' shared by the company':''}.</p>${data.has_subscription?'<p>Manage your existing subscription before choosing another plan.</p>':`<button type="button" class="primary" data-buy="${esc(p.id)}">Subscribe to ${esc(p.name)}</button>`}</article>`;
+  if(p.interval==='month')return `<article class="plan-card"><h2>${esc(p.name)}</h2><p>${esc(price)} / month</p><p>${esc(p.seats)} user${p.seats===1?'':'s'} · ${esc(p.analyses)} photo analyses · ${esc(p.joe_answers)} Joe answers per month${p.seats>1?' shared by the company':''}.</p>${data.subscriptions?.some(s=>s.plan===p.plan)?'<span class="badge">Current plan</span>':data.has_subscription?(data.subscriptions?.length&&!data.scheduled_change?`<button type="button" class="primary" data-buy="${esc(p.id)}" data-change>Change to ${esc(p.name)}</button>`:'<p>Manage your existing subscription with its original payment provider.</p>'):`<button type="button" class="primary" data-buy="${esc(p.id)}">Subscribe to ${esc(p.name)}</button>`}</article>`;
   return `<article class="plan-card"><h2>${esc(p.name)}</h2><p>${esc(price)} once</p><button type="button" class="primary" data-buy="${esc(p.id)}">Buy ${esc(p.analyses)} ${p.analyses===1?'analysis':'analyses'}</button></article>`;
  };
  host.querySelector('[data-play-plans]').innerHTML=available.filter(i=>catalog.find(p=>p.id===i.itemId).interval==='month').map(card).join('')||'<p>Monthly Google Play plans are not connected yet. Your existing access is unchanged.</p>';
  host.querySelector('[data-play-packs]').innerHTML=available.filter(i=>catalog.find(p=>p.id===i.itemId).interval!=='month').map(card).join('');
- host.querySelector('[data-subscription-status]').textContent=(data.subscriptions||[]).map(s=>`${s.plan.toUpperCase()}: current period ends ${new Date(s.period_end).toLocaleDateString()}.`).join(' ');
+ host.querySelector('[data-subscription-status]').textContent=(data.subscriptions||[]).map(s=>`${s.plan.toUpperCase()}: current period ends ${new Date(s.period_end).toLocaleDateString()}.`).join(' ')+(data.scheduled_change?` ${data.scheduled_change.plan.toUpperCase()} is scheduled for ${new Date(data.scheduled_change.effective_at).toLocaleDateString()}. Your current allowance remains until renewal. Manage this change in Google Play.`:'');
  message.textContent=available.length?'Choose a plan or pack. Google Play confirms the price and recurring terms before you pay.':'These packs are not available for your Google Play account yet.';
  let prepared=null;
  const resetChoice=()=>{host.querySelectorAll('[data-buy]').forEach(b=>{if(b.dataset.originalLabel)b.textContent=b.dataset.originalLabel;});prepared=null;};
@@ -33,20 +33,22 @@ export async function playBillingView(host,{api,esc}){
   const item=available.find(p=>p.itemId===button.dataset.buy);
   if(prepared?.id!==item.itemId||Date.now()>prepared.until){
    resetChoice();message.textContent='Checking your account before opening Google Play…';
-   try{await write('/api/billing/play/prepare',{product:item.itemId});}
+   let checked;
+   try{checked=await write(button.hasAttribute('data-change')?'/api/billing/play/change':'/api/billing/play/prepare',{product:item.itemId});}
    catch(e){throw new Error(`${e.message} Google checkout has not opened and no payment was started. Tap the plan or pack to retry.`);}
-   prepared={id:item.itemId,until:Date.now()+60000};
+   prepared={id:item.itemId,until:Date.now()+60000,replacement:checked?.replacement};
    button.dataset.originalLabel ||= button.textContent;
    button.textContent='Continue in Google Play';
-   message.textContent='Your account is ready. Tap Continue in Google Play to review the price before paying.';
+   message.textContent=checked?.replacement?`Change starts ${new Date(checked.effective_at).toLocaleDateString()}. No charge today. Keep your current allowance until renewal; purchased packs carry over. Google Play will confirm the new recurring price. A scheduled downgrade limits new team invitations to the smaller plan.`:'Your account is ready. Tap Continue in Google Play to review the price before paying.';
    return;
   }
+  const replacement=prepared.replacement;
   resetChoice();
   const paymentDetails={total:{label:item.title||'Photo analyses',amount:item.price}};
   // Open checkout directly from this fresh click, with no outstanding server fetch.
-  const response=await new PaymentRequest([{supportedMethods:METHOD,data:{sku:item.itemId}}],paymentDetails).show();
+  const response=await new PaymentRequest([{supportedMethods:METHOD,data:{sku:item.itemId,...replacement}}],paymentDetails).show();
   message.textContent='Verifying your purchase…';
-  try{const result=await confirm({itemId:item.itemId,purchaseToken:response.details.purchaseToken||response.details.token});await response.complete(result.confirmed?'success':'unknown');message.textContent=result.confirmed?'Your purchase is ready. Reopen Plan & usage to see your updated plan and all balances.':'Payment is pending. Tap Check purchases after Google confirms payment.';}
+  try{const result=await confirm({itemId:item.itemId,purchaseToken:response.details.purchaseToken||response.details.token});await response.complete(result.confirmed?'success':'unknown');message.textContent=result.scheduled?`Your plan change is scheduled for ${new Date(result.effective_at).toLocaleDateString()}. Your current allowance stays available until renewal.`:result.confirmed?'Your purchase is ready. Reopen Plan & usage to see your updated plan and all balances.':'Payment is pending. Tap Check purchases after Google confirms payment.';}
   catch(e){await response.complete('unknown').catch(()=>{});throw new Error('Your payment may have succeeded. Tap Check purchases to finish adding credits. Do not pay again.');}
  }));
  const restore=host.querySelector('[data-restore]');restore.hidden=false;

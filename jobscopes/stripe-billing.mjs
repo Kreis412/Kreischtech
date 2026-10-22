@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {billingStore, billingPreview, PLANS, SUBSCRIPTION_PLANS, ANALYSIS_PACKS, CARRYOVER_EXPIRY} from './billing.mjs';
 import {invoiceCharge,intentCharge,chargeAllowance} from './payment-entitlement.mjs';
 import {paidUsage} from './paid-usage.mjs';
+import {stripePlanChanges} from './stripe-plan-changes.mjs';
 
 // These public IDs were verified in this account's TEST catalog. Never reuse for live billing.
 export const TEST_PRICES=Object.freeze({solo:'price_1ULhyiLNHFjZswsLREk1wyW7',crew:'price_1ULhzgLNHFjZswsLem7PSQsP',pack:'price_1ULi17LNHFjZswsLkIg3xK4L'});
@@ -29,6 +30,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,company TEXT NOT NULL,plan TEXT NOT NULL,created INTEGER NOT NULL,session TEXT UNIQUE,url TEXT,subscription TEXT UNIQUE,fulfilled INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS subscriptions(id TEXT PRIMARY KEY,company TEXT NOT NULL,plan TEXT NOT NULL,status TEXT NOT NULL,period_end INTEGER NOT NULL,cancel_at_end INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS invoices(id TEXT PRIMARY KEY,company TEXT NOT NULL,subscription TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS invoice_plans(id TEXT PRIMARY KEY,plan TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS checkout_locks(company TEXT PRIMARY KEY,expires INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS payment_receipts(grant_id TEXT PRIMARY KEY,company TEXT NOT NULL,charge TEXT NOT NULL UNIQUE,amount INTEGER NOT NULL,credits INTEGER NOT NULL);`);
@@ -44,10 +46,12 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  const owner=s=>{if(s.role!=='Owner')fail(403,'Only the company owner can manage billing.');};
  const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}};
  async function external(fn){try{return await fn();}catch(e){if(e.status)throw e;fail(502,'Stripe could not complete this step. No automatic retry was made.');}}
+ const changes=stripePlanChanges({db,stripe,prices,live,now,memberCount,external});
  const packConfigured=p=>validId(prices[p.id],'price_');
  function status(session){
   const subscriptions=db.prepare('SELECT plan,status,period_end,cancel_at_end FROM subscriptions WHERE company=? ORDER BY period_end DESC').all(session.company_id);
-  if(live)return {mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:SUBSCRIPTION_PLANS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),packs:ANALYSIS_PACKS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),carryover_balance:credits.carryoverBalance(session.company_id),balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
+  const scheduled_change=changes.status(session.company_id);
+  if(live)return {scheduled_change,mode:'stripe-live',currency:'USD',checkout_enabled:session.role==='Owner',plans:SUBSCRIPTION_PLANS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),packs:ANALYSIS_PACKS.map(p=>({...p,purchase_enabled:packConfigured(p)&&session.role==='Owner'})),carryover_balance:credits.carryoverBalance(session.company_id),balance:credits.balance(session.company_id),joe_balance:credits.balance(session.company_id,'joe'),subscriptions,support_email:'kreischtech@gmail.com'};
   return {...billingPreview(),plans:PLANS.filter(p=>packConfigured(p)),mode:'stripe-test',checkout_enabled:session.role==='Owner',message:'Test checkout only. No real money is collected, and test credits do not increase your paid AI allowance.',test_balance:credits.balance(session.company_id),subscriptions};
  }
  async function checkout(session,key,consent){
@@ -109,11 +113,12 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   const sub=await external(()=>stripe.subscriptions.retrieve(subscriptionId));
   if(sub.livemode!==live||sub.metadata?.contractorsight_order!==order.id)fail(409,'Subscription does not match the saved order.');
   const items=sub.items?.data||[],item=items[0];
-  if(items.length!==1||id(item.price)!==prices[order.plan]||item.quantity!==1)fail(409,'Subscription pricing differs from the saved order.');
+  const currentPlan=Object.keys(prices).find(p=>prices[p]===id(item?.price));
+  if(items.length!==1||item.quantity!==1||!currentPlan||(currentPlan!==order.plan&&!changes.allowed(sub.id,currentPlan,now())))fail(409,'Subscription pricing differs from the saved order.');
   const end=item.current_period_end*1000;
   if(!Number.isSafeInteger(end))fail(502,'Stripe returned an invalid subscription period.');
   db.prepare('UPDATE orders SET subscription=? WHERE id=?').run(sub.id,order.id);
-  db.prepare('INSERT INTO subscriptions VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,period_end=excluded.period_end,cancel_at_end=excluded.cancel_at_end').run(sub.id,order.company,order.plan,sub.status,end,sub.cancel_at_period_end?1:0);
+  db.prepare('INSERT INTO subscriptions VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET plan=excluded.plan,status=excluded.status,period_end=excluded.period_end,cancel_at_end=excluded.cancel_at_end').run(sub.id,order.company,currentPlan,sub.status,end,sub.cancel_at_period_end?1:0);
   return sub;
  }
  async function invoicePaid(invoiceId){
@@ -124,8 +129,10 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   const order=db.prepare('SELECT * FROM orders WHERE id=?').get(sub.metadata?.contractorsight_order||'');if(!order)return;
   if(planFor(order.plan).interval==='pack'||sub.livemode!==live)fail(409,'Invoice does not match a subscription.');
   await refreshSubscription(subscriptionId,order);
-  const lines=invoice.lines?.data||[],line=lines[0],plan=planFor(order.plan);
-  if(invoice.lines?.has_more||lines.length!==1||id(line.pricing?.price_details?.price)!==prices[order.plan]||line.quantity!==1||invoice.currency!=='usd'||invoice.amount_paid!==plan.price_cents||!['subscription_create','subscription_cycle'].includes(invoice.billing_reason))fail(409,'This invoice needs manual review before granting credits.');
+  const lines=invoice.lines?.data||[],line=lines[0],planKey=Object.keys(prices).find(p=>prices[p]===id(line?.pricing?.price_details?.price));
+  if(!planKey||(planKey!==order.plan&&!changes.allowed(subscriptionId,planKey,Math.min(now(),line?.period?.start*1000))))fail(409,'This invoice does not match an authorized plan change.');
+  const plan=planFor(planKey);
+  if(invoice.lines?.has_more||lines.length!==1||line.quantity!==1||invoice.currency!=='usd'||invoice.amount_paid!==plan.price_cents||!['subscription_create','subscription_cycle'].includes(invoice.billing_reason))fail(409,'This invoice needs manual review before granting credits.');
   const expires=line.period?.end*1000;
   if(!Number.isSafeInteger(expires))fail(502,'Invoice period is invalid.');
   if(expires<=now())return;
@@ -135,6 +142,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   const adjustment=await external(()=>chargeAllowance(stripe,charge,plan.price_cents,allowance,live));
   // Save the mapping before granting; redelivery recovers a crash between DBs.
   receipt(grantId,order.company,charge.id,plan.price_cents,allowance);
+  db.prepare('INSERT OR IGNORE INTO invoice_plans VALUES(?,?)').run(invoice.id,planKey);
   // Invoice identity deduplicates return-page checks and webhook deliveries, including restarts.
   if(expires>now()&&!db.prepare('SELECT 1 FROM invoices WHERE id=?').get(invoice.id)){
    credits.grant({id:grantId,company:order.company,amount:allowance,expires,...adjustment});
@@ -178,11 +186,17 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
  async function sync(session){
   owner(session);return serial(async()=>{const orders=db.prepare('SELECT session FROM orders WHERE company=? AND session IS NOT NULL AND fulfilled>=0 ORDER BY created DESC LIMIT 10').all(session.company_id);
   for(const order of orders)await fulfill(order.session,session.company_id);
+  for(const order of db.prepare('SELECT * FROM orders WHERE company=? AND subscription IS NOT NULL').all(session.company_id)){
+   const sub=await refreshSubscription(order.subscription,order);
+   if(validId(id(sub.latest_invoice),'in_'))await invoicePaid(id(sub.latest_invoice));
+  }
   return status(session);});
  }
  async function cancel(session){
   owner(session);const sub=db.prepare("SELECT * FROM subscriptions WHERE company=? AND status NOT IN ('canceled','incomplete_expired') ORDER BY period_end DESC LIMIT 1").get(session.company_id);
   if(!sub)fail(404,'No subscription to cancel.');
+  if(changes.pending(session.company_id))fail(409,'Cancel your scheduled plan change first, then cancel renewal.');
+  await changes.releaseCompletedSchedule(sub.id);
   await external(()=>stripe.subscriptions.update(sub.id,{cancel_at_period_end:true},{idempotencyKey:'cs-'+mode+'-cancel:'+sub.id}));
   await refreshSubscription(sub.id,db.prepare('SELECT * FROM orders WHERE subscription=?').get(sub.id));return status(session);
  }
@@ -224,10 +238,13 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   if(!hasPaidCompany(company))return Infinity;
   const rows=db.prepare("SELECT plan FROM subscriptions WHERE company=? AND status IN ('active','canceled') AND period_end>?").all(company,now());
   // Team access requires a verified paid, non-revoked grant, not just checkout creation.
-  return rows.reduce((limit,row)=>{const plan=planFor(row.plan);const paid=db.prepare('SELECT id FROM invoices WHERE company=? AND subscription IN (SELECT id FROM subscriptions WHERE company=? AND plan=?)').all(company,company,row.plan).some(i=>{const g=credits.grantInfo('invoice:'+i.id,company);return g&&g.expires>now()&&credits.grantAvailable('invoice:'+i.id,company)>0;});return paid?Math.max(limit,plan.seats):limit;},1);
+  const limit=rows.reduce((limit,row)=>{const plan=planFor(row.plan);const paid=db.prepare('SELECT i.id,coalesce(p.plan,o.plan) plan FROM invoices i JOIN orders o ON o.subscription=i.subscription LEFT JOIN invoice_plans p ON p.id=i.id WHERE i.company=?').all(company).some(i=>{const g=credits.grantInfo('invoice:'+i.id,company);return i.plan===row.plan&&g&&g.expires>now()&&credits.grantAvailable('invoice:'+i.id,company)>0;});return paid?Math.max(limit,plan.seats):limit;},1);
+  return Math.min(limit,changes.seatCap(company));
  };
  const runSaved=company=>paidUsage(credits,company);
  const balance=(company,kind='analysis')=>credits.balance(company,kind);
  const hasSubscription=company=>live&&!!db.prepare("SELECT 1 FROM subscriptions WHERE company=? AND (status NOT IN ('canceled','incomplete_expired') OR period_end>?)").get(company,now());
- return {ready:true,live,hasSubscription,status,checkout,confirm,sync,cancel,webhook,hasPaidCompany,seatLimit,runSaved,balance,close(){credits.close();db.close();}};
+ return {ready:true,live,hasSubscription,status,checkout,confirm,sync,cancel:s=>serial(()=>cancel(s)),webhook,hasPaidCompany,seatLimit,runSaved,balance,
+  previewChange:(s,p)=>serial(()=>changes.preview(s,p)),confirmChange:(s,q)=>serial(()=>changes.confirm(s,q)),cancelChange:s=>serial(()=>changes.cancel(s)),
+  close(){credits.close();db.close();}};
 }

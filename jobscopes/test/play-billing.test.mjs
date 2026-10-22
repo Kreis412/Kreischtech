@@ -75,3 +75,44 @@ test('Play rejects unverified, mismatched, duplicate, test and oversized subscri
  assert.equal(f.service.status(owner).balance,150);
  f.options.memberCount=()=>6;f.restart();f.add('team-token-003');await assert.rejects(f.service.confirm({...owner,company_id:'six'},'contractorsight_team','team-token-003'),{status:409});
 });
+
+test('Play deferred replacement transfers current credits without resetting usage, then grants the paid new period',async t=>{
+ const f=subscriptionFixture(t);f.add('solo-original','solo');await f.service.confirm(owner,'contractorsight_solo','solo-original');
+ await f.service.runSaved(owner.company_id)('analysis','used-photo',async()=>true);
+ await f.service.runSaved(owner.company_id)('joe','used-answer',async()=>true);
+ const preview=await f.service.prepareChange(owner,'contractorsight_team');
+ assert.equal(preview.replacement.prorationMode,'deferred');assert.equal(preview.replacement.purchaseToken,'solo-original');
+ assert.equal(f.service.status(owner).balance,24);
+ const old=structuredClone(f.purchases.get('solo-original').lineItems[0]);old.deferredItemReplacement={productId:'contractorsight_team'};
+ f.add('team-replacement','team',{linkedPurchaseToken:'solo-original',lineItems:[old,{productId:'contractorsight_team',offerDetails:{basePlanId:'monthly'}}]});
+ f.failAck(true);await assert.rejects(f.service.confirm(owner,'contractorsight_team','team-replacement'));
+ f.failAck(false);f.restart();const result=await f.service.confirm(owner,'contractorsight_team','team-replacement');
+ assert.equal(result.scheduled,true);assert.equal(f.service.status(owner).balance,24);assert.equal(f.service.status(owner).joe_balance,24);assert.equal(f.service.seatLimit(owner.company_id),1);
+ assert.equal(f.service.status(owner).scheduled_change.plan,'team');
+ await assert.rejects(f.service.prepareChange({...owner,user_id:'other'},'contractorsight_pro'),{status:409});
+ await assert.rejects(f.service.prepareChange(owner,'contractorsight_pro'),{status:409});
+ await assert.rejects(f.service.confirm({...owner,company_id:'other'},'contractorsight_team','team-replacement'),{status:409});
+ const purchase=f.purchases.get('team-replacement');delete purchase.lineItems[0].deferredItemReplacement;
+ purchase.lineItems[1].expiryTime=new Date(Date.parse(old.expiryTime)+30*86400000).toISOString();purchase.lineItems[1].latestSuccessfulOrderId='team-renewal';
+ f.advance(31*86400000);await f.service.reconcile(owner.company_id,true);
+ assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.status(owner).joe_balance,250);assert.equal(f.service.seatLimit(owner.company_id),5);assert.equal(f.service.status(owner).scheduled_change,null);
+ await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,150);
+});
+
+test('Play rejects invalid replacements before touching the paid balance and blocks oversized downgrades',async t=>{
+ const f=subscriptionFixture(t);f.add('team-original','team');await f.service.confirm(owner,'contractorsight_team','team-original');
+ f.options.memberCount=()=>3;f.restart();await assert.rejects(f.service.prepareChange(owner,'contractorsight_solo'),{status:409});
+ f.add('invalid-replace','pro',{linkedPurchaseToken:'team-original',lineItems:[{productId:'contractorsight_pro',offerDetails:{basePlanId:'monthly'},expiryTime:'bad'}]});
+ await assert.rejects(f.service.confirm(owner,'contractorsight_pro','invalid-replace'));assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.seatLimit(owner.company_id),5);
+});
+
+test('Play scheduled downgrade retains current credits and canceled renewal does not award future credits',async t=>{
+ const f=subscriptionFixture(t);f.add('team-first','team');await f.service.confirm(owner,'contractorsight_team','team-first');
+ const old=structuredClone(f.purchases.get('team-first').lineItems[0]);old.deferredItemReplacement={productId:'contractorsight_solo'};
+ f.add('solo-later','solo',{linkedPurchaseToken:'team-first',lineItems:[old,{productId:'contractorsight_solo',offerDetails:{basePlanId:'monthly'}}]});
+ await f.service.confirm(owner,'contractorsight_solo','solo-later');assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.seatLimit(owner.company_id),1);
+ assert.equal((await f.service.confirm(owner,'contractorsight_team','team-first')).superseded,true);
+ const p=f.purchases.get('solo-later');p.subscriptionState='SUBSCRIPTION_STATE_CANCELED';p.lineItems=[{...old}];delete p.lineItems[0].deferredItemReplacement;
+ await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.status(owner).scheduled_change,null);
+ f.advance(31*86400000);p.subscriptionState='SUBSCRIPTION_STATE_EXPIRED';await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,0);assert.equal(f.service.status(owner).joe_balance,0);
+});
