@@ -193,7 +193,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
         } else db.prepare('INSERT INTO discoveries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)').run(id, projectId, ...values, now, now);
         return send(existingId ? 200 : 201, db.prepare('SELECT * FROM discoveries WHERE id=?').get(id));
       }
-      const staticFiles = { '/photo-queue.js': ['photo-queue.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/materials.js': ['materials.js', 'text/javascript; charset=utf-8'], '/company.js': ['company.js', 'text/javascript; charset=utf-8'], '/security.js': ['security.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
+      const staticFiles = { '/settings-navigation.js': ['settings-navigation.js', 'text/javascript; charset=utf-8'], '/photo-queue.js': ['photo-queue.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/materials.js': ['materials.js', 'text/javascript; charset=utf-8'], '/company.js': ['company.js', 'text/javascript; charset=utf-8'], '/security.js': ['security.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
       if (req.method === 'GET' && staticFiles[path]) {
         const [file, type] = staticFiles[path]; return send(200, readFileSync(join(ROOT, 'public', file)), type);
       }
