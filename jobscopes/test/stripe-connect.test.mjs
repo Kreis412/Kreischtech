@@ -40,7 +40,7 @@ test('hosted Accounts v2 onboarding uses full dashboard, Stripe fees/losses and 
  await Promise.all([f.service.onboarding(owner),f.service.onboarding(owner)]);
  assert.equal(f.accounts.size,1);const a=[...f.accounts.values()][0];assert.equal(a.dashboard,'full');assert.deepEqual(a.defaults.responsibilities,{fees_collector:'stripe',losses_collector:'stripe'});
  assert.equal(a.configuration.merchant.capabilities.card_payments.requested,true);
- const link=f.calls.find(c=>c.kind==='link').params;assert.equal(link.use_case.account_onboarding.return_url,'https://example.test/invoicing.html?returned=1');
+ const link=f.calls.find(c=>c.kind==='link').params;assert.equal(link.use_case.account_onboarding.return_url,'https://example.test/invoicing.html?returned=1');assert.deepEqual(link.use_case.account_onboarding.configurations,['merchant']);
  assert.equal((await f.service.status(owner)).active,true);await f.service.onboarding(other);assert.equal(f.accounts.size,2);
  await assert.rejects(f.service.onboarding(manager),{status:403});await assert.rejects(f.service.onboarding(viewer),{status:403});
 });
