@@ -18,7 +18,7 @@ function fixture(t){
  let time=Date.now(),active=true,failNext='',count=0;
  const once=async(kind,params,opts,make)=>{calls.push({kind,params:structuredClone(params),opts});const k=opts?.idempotencyKey||randomUUID();if(!cache.has(k))cache.set(k,make());const result=cache.get(k);if(failNext===kind){failNext='';throw new Error('lost Stripe response');}return structuredClone(result);};
  const scoped=opts=>{assert.match(opts?.stripeAccount||'',/^acct_/);return opts.stripeAccount;};
- const client={webhooks:sdk.webhooks,v2:{core:{accounts:{create:(params,opts)=>once('account',params,opts,()=>{const a={id:'acct_'+(++count),livemode:false,...params};accounts.set(a.id,a);return a;}),retrieve:async id=>{const a=accounts.get(id);assert.ok(a);return {...a,configuration:{merchant:{capabilities:{card_payments:{status:active?'active':'pending'}}}}};}},accountLinks:{create:async params=>{calls.push({kind:'link',params});return {url:'https://connect.stripe.com/setup/test'};}}}},
+ const client={webhooks:sdk.webhooks,parseEventNotification:sdk.parseEventNotification.bind(sdk),v2:{core:{accounts:{create:(params,opts)=>once('account',params,opts,()=>{const a={id:'acct_'+(++count),livemode:false,...params};accounts.set(a.id,a);return a;}),retrieve:async id=>{const a=accounts.get(id);assert.ok(a);return {...a,configuration:{merchant:{capabilities:{card_payments:{status:active?'active':'pending'}}}}};}},accountLinks:{create:async params=>{calls.push({kind:'link',params});return {url:'https://connect.stripe.com/setup/test'};}}}},
   customers:{create:(params,opts)=>{scoped(opts);return once('customer',params,opts,()=>({id:'cus_'+(++count),livemode:false,...params}));}},
   invoices:{create:(params,opts)=>{const account=scoped(opts);return once('invoice',params,opts,()=>{const inv={id:'in_'+(++count),livemode:false,status:'draft',amount_due:0,amount_paid:0,account,...params};invoices.set(inv.id,inv);return inv;});},retrieve:async(id,opts)=>{assert.equal(invoices.get(id)?.account,scoped(opts));return structuredClone(invoices.get(id));},
    finalizeInvoice:(id,params,opts)=>once('finalize',{id,...params},opts,()=>{const inv=invoices.get(id);assert.equal(inv.account,scoped(opts));inv.status='open';inv.hosted_invoice_url='https://invoice.stripe.com/i/'+id;return inv;}),
@@ -28,7 +28,7 @@ function fixture(t){
  let service=stripeConnect(options);const cleanups=[];
  t.after(async()=>{for(const cleanup of cleanups)await cleanup();service.close();rmSync(dir,{recursive:true,force:true});});
  const body=(s=owner)=>({request_id:randomUUID(),project_id:'project-'+s.company_id,customer:{name:'Customer <name>',email:'customer@example.test'},items:[{description:'Deposit',quantity:2,unit_amount:12500},{description:'Materials',quantity:1,unit_amount:4500}],days_until_due:30});
- const event=async(type,invoice,extra={},signing=secret,kind='invoices')=>{const raw=JSON.stringify({id:'evt_'+randomUUID(),type,livemode:false,account:invoice?.account,data:{object:invoice},...extra});const sig=sdk.webhooks.generateTestHeaderString({payload:raw,secret:signing});return service.webhook(Buffer.from(raw),sig,kind);};
+ const event=async(type,invoice,extra={},signing=secret,kind='invoices')=>{const id='evt_'+randomUUID();const payload=kind==='accounts'?{id,object:'v2.core.event',type,created:new Date().toISOString(),livemode:false,related_object:{id:extra.related_object?.id||'acct_test',type:'v2.core.account',url:'/v2/core/accounts/'+(extra.related_object?.id||'acct_test')},...extra}:{id,type,livemode:false,account:invoice?.account,data:{object:invoice},...extra};const raw=JSON.stringify(payload);const sig=sdk.webhooks.generateTestHeaderString({payload:raw,secret:signing});return service.webhook(Buffer.from(raw),sig,kind);};
  return {dir,client,options,accounts,invoices,calls,body,event,cleanup:fn=>cleanups.push(fn),get service(){return service;},get time(){return time;},advance:ms=>time+=ms,setActive:value=>active=value,fail:kind=>failNext=kind,restart:()=>{service.close();service=stripeConnect(options);}};
 }
 test('sandbox and live credentials fail closed independently of existing billing',t=>{
@@ -129,3 +129,4 @@ test('HTTP endpoints require a session, owner role and browser origin; webhook u
  assert.equal((await fetch(base+'/invoicing.html')).status,200);
  assert.equal((await fetch(base+'/invoicing.js')).status,200);
 });
+
