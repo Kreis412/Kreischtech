@@ -5,6 +5,7 @@ import {appointments} from './appointments.mjs';
 import {googlePlayClient} from './google-play-client.mjs';
 import {customerPortal} from './customer-portal.mjs';
 import {stripeBilling} from './stripe-billing.mjs';
+import {stripeConnect} from './stripe-connect.mjs';
 import {aiBudget} from './ai-budget.mjs';
 import {runUnmetered} from './paid-usage.mjs';
 import { prepareHostedPhoto } from './hosted-photo.mjs';
@@ -34,7 +35,7 @@ async function largeJson(req,limit=8*1024*1024) {
   try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))fail(400,'Expected an object.');return b;}
   catch(e){if(e.status)throw e;fail(400,'Invalid photo request.');}
 }
-export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},playOptions={},cloudRequest=fetch}={}) {
+export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},connectOptions={},playOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
   const weather=weatherService();
   const portal=customerPortal(dataDir);
@@ -43,6 +44,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   const reminders=pushReminders(dataDir,{member:auth.hasMember});
   const live=process.env.STRIPE_LIVE_BILLING==='1';
   billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,pro:process.env.STRIPE_PRO_PRICE_ID,team:process.env.STRIPE_TEAM_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount,otherSubscription:company=>play?.hasSubscription(company)??false});
+  const connect=stripeConnect({dataDir,origin:publicOrigin,enabled:process.env.STRIPE_CONNECT_ENABLED==='1',mode:process.env.STRIPE_CONNECT_MODE||'sandbox',allowLive:process.env.STRIPE_CONNECT_ALLOW_LIVE==='1',secretKey:process.env.STRIPE_CONNECT_SECRET_KEY,webhookSecret:process.env.STRIPE_CONNECT_WEBHOOK_SECRET,accountWebhookSecret:process.env.STRIPE_CONNECT_ACCOUNT_WEBHOOK_SECRET,...connectOptions});
   let playClient;
   try{if(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)playClient=googlePlayClient(JSON.parse(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON));}catch{console.error('Google Play credentials are invalid; purchases remain disabled.');}
   play=playBilling({dataDir,client:playClient,enabled:process.env.GOOGLE_PLAY_BILLING==='1',allowTest:process.env.GOOGLE_PLAY_ALLOW_TEST==='1',products:{solo:process.env.GOOGLE_PLAY_SOLO_PRODUCT_ID,pro:process.env.GOOGLE_PLAY_PRO_PRODUCT_ID,team:process.env.GOOGLE_PLAY_TEAM_PRODUCT_ID},...playOptions,memberCount:auth.memberCount,otherSubscription:company=>billing.hasSubscription?.(company)??false});
@@ -67,6 +69,14 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
     };
     try {
       const url=new URL(req.url,'http://localhost');
+      if(['/api/connect/webhook','/api/connect/accounts-webhook'].includes(url.pathname)&&req.method==='POST'){
+        policy.guard({method:'GET',url:req.url,headers:req.headers,socket:req.socket});
+        if(!connect.ready)fail(503,'Contractor invoicing is not configured.');
+        let size=0;const chunks=[];
+        for await(const chunk of req){size+=chunk.length;if(size>262144)fail(413,'Webhook is too large.');chunks.push(chunk);}
+        await connect.webhook(Buffer.concat(chunks),req.headers['stripe-signature'],url.pathname.endsWith('accounts-webhook')?'accounts':'invoices');
+        return send(200,{received:true});
+      }
       if(url.pathname==='/api/billing/webhook' && req.method==='POST'){
         // Machine callback: same host/TLS checks, authenticated by Stripe's raw-body signature.
         // All browser-facing writes still require their normal Origin/session checks.
@@ -90,6 +100,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         return send(200,await guestTrials.analyze(req,await largeJson(req)));
       }
       if(req.method==='GET') {
+        if(['/invoicing.html','/invoicing.js'].includes(url.pathname))return send(200,readFileSync(join(ROOT,'public',url.pathname.slice(1))),url.pathname.endsWith('.html')?'text/html; charset=utf-8':'text/javascript; charset=utf-8');
         if(['/booking.html','/booking.js','/appointments.js'].includes(url.pathname))return send(200,readFileSync(join(ROOT,'public',url.pathname.slice(1))),url.pathname.endsWith('.html')?'text/html; charset=utf-8':'text/javascript; charset=utf-8');
         if(url.pathname==='/delete-account.html') return send(200,readFileSync(join(ROOT,'public/delete-account.html')),'text/html; charset=utf-8');
         if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
@@ -108,6 +119,19 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(url.pathname==='/api/booking/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.publicStatus(req.headers['x-booking-token']));}
       if(url.pathname==='/api/booking'){if(req.method==='GET')return send(200,booking.publicView(req.headers['x-booking-token'],url.searchParams.get('date')));if(req.method==='POST')return send(201,booking.request(req.headers['x-booking-token'],await json(req)));fail(405,'Method not allowed.');}
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(url.pathname==='/api/connect/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,await connect.status(session));}
+      if(url.pathname.startsWith('/api/connect/')){
+        if(!connect.ready)fail(503,'Contractor invoicing is not configured.');
+        if(url.pathname==='/api/connect/onboarding'&&req.method==='POST')return send(200,await connect.onboarding(session));
+        if(url.pathname==='/api/connect/invoices'){
+          if(req.method==='GET')return send(200,{invoices:connect.list(session,url.searchParams.get('project_id'))});
+          if(req.method==='POST')return send(201,await connect.create(session,await json(req)));
+          fail(405,'Method not allowed.');
+        }
+        const match=url.pathname.match(/^\/api\/connect\/invoices\/([\w-]+)\/(finalize|send|sync|resume)$/);
+        if(match){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,match[2]==='resume'?await connect.resume(session,match[1]):await connect.action(session,match[1],match[2]));}
+        fail(404,'Invoicing action not found.');
+      }
       if(url.pathname==='/api/reminders'){if(req.method==='GET')return send(200,reminders.status(session));const b=await json(req);if(req.method==='PUT')return send(200,reminders.save(session,b));if(req.method==='DELETE')return send(200,reminders.remove(session,String(b.endpoint||'')));if(req.method==='POST')return send(200,b.action==='test'?await reminders.test(session,String(b.endpoint||'')):reminders.status(session,String(b.endpoint||'')));fail(405,'Method not allowed.');}
       if(url.pathname==='/api/weather'){if(req.method!=='POST')fail(405,'Method not allowed.');const b=await json(req);return send(200,await weather(session.user_id,b.latitude,b.longitude));}
       if(url.pathname==='/api/appointments/settings'){if(req.method==='GET')return send(200,booking.settings(session));if(req.method==='PUT')return send(200,booking.settings(session,await json(req)));fail(405,'Method not allowed.');}
@@ -155,7 +179,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   });
   server.on('listening',()=>reminders.start());
   server.requestTimeout=120000;
-  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();play.close();});
+  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
