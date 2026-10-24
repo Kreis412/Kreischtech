@@ -109,7 +109,7 @@ export function stripeConnect({dataDir,origin,enabled=false,mode='sandbox',allow
   return {url:stripeUrl(link.url,'connect.stripe.com')};
  }
  async function webhook(raw,signature,kind='invoices'){
-  let event;try{event=stripe.webhooks.constructEvent(raw,signature,kind==='accounts'?accountWebhookSecret:webhookSecret);}catch{fail(400,'Invalid Stripe webhook signature.');}
+  let event;try{event=kind==='accounts'?stripe.parseEventNotification(raw,signature,accountWebhookSecret):stripe.webhooks.constructEvent(raw,signature,webhookSecret);}catch{fail(400,'Invalid Stripe webhook signature.');}
   return serial(async()=>{
    if(event.livemode!==live||db.prepare('SELECT 1 FROM events WHERE id=?').get(event.id))return {received:true};
    if(event.type==='account.application.deauthorized'){
@@ -131,3 +131,4 @@ export function stripeConnect({dataDir,origin,enabled=false,mode='sandbox',allow
   resume:(s,id)=>serial(()=>{owner(s);const row=local(s,id);return create(s,{...JSON.parse(row.payload),request_id:row.request_id});}),
   list:(s,p)=>{member(s);if(p)project(s,p);return db.prepare('SELECT * FROM invoices WHERE company=?'+(p?' AND project=?':'')+' ORDER BY created DESC LIMIT 100').all(...(p?[s.company_id,p]:[s.company_id])).map(view);},webhook};
 }
+
