@@ -1,3 +1,4 @@
+import {renderSettingsSection} from '/settings-navigation.js';
 import {initAnalytics,analyticsSettings} from '/analytics.js';
 import {dailyCheckin,checkinSettings} from '/daily-checkin.js';
 import {homeOverview, photoProjectPicker} from '/home.js';
@@ -217,19 +218,19 @@ function discoveryForm(id) {
     });
 }
 
-async function expertiseSettings(){
+async function expertiseSettings(host=main){
  const profile=await api('/api/business-expertise');
- main.innerHTML='<section class="panel"><h1>Profession & specialties</h1><p>Tell Joe what your business does. This profile is shared across your company and included when members ask Joe or analyze photos. It is not a license verification.</p><form id="expertise-form">'+field('Profession / trade','profession',profile.profession,{max:160,full:true})+field('Specialties','specialties',profile.specialties,{max:600,area:true,full:true})+'<p>Examples: Professional carpenter; finish carpentry, decks, framing. Leave blank to remove this context. Cloud AI receives these fields when you submit a request.</p><button type="submit">Save profession</button><p role="status" id="expertise-status"></p></form></section>';
- const form=main.querySelector('form');if(document.body.dataset.role!=='Owner'){form.querySelectorAll('input,textarea,button').forEach(x=>x.disabled=true);main.querySelector('#expertise-status').textContent='Only the business owner can update this profile.';return;}
- form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await write('/api/business-expertise','PUT',Object.fromEntries(new FormData(form)));main.querySelector('#expertise-status').textContent='Profession saved. Joe and new photo analyses will use it.';}catch(error){main.querySelector('#expertise-status').textContent=error.message;}finally{b.disabled=false;}};
+ host.innerHTML='<section class="panel"><h1>Profession & specialties</h1><p>Tell Joe what your business does. This profile is shared across your company and included when members ask Joe or analyze photos. It is not a license verification.</p><form id="expertise-form">'+field('Profession / trade','profession',profile.profession,{max:160,full:true})+field('Specialties','specialties',profile.specialties,{max:600,area:true,full:true})+'<p>Examples: Professional carpenter; finish carpentry, decks, framing. Leave blank to remove this context. Cloud AI receives these fields when you submit a request.</p><button type="submit">Save profession</button><p role="status" id="expertise-status"></p></form></section>';
+ const form=host.querySelector('form');if(document.body.dataset.role!=='Owner'){form.querySelectorAll('input,textarea,button').forEach(x=>x.disabled=true);host.querySelector('#expertise-status').textContent='Only the business owner can update this profile.';return;}
+ form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await write('/api/business-expertise','PUT',Object.fromEntries(new FormData(form)));host.querySelector('#expertise-status').textContent='Profession saved. Joe and new photo analyses will use it.';}catch(error){host.querySelector('#expertise-status').textContent=error.message;}finally{b.disabled=false;}};
 }
 function settingsNavigation() {
   return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/privacy','Privacy & analytics'],['#settings/checkin','Daily check-in'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
-function appearanceView() {
+function appearanceView(host=main) {
   const dark=document.documentElement.dataset.theme==='dark';
-  main.innerHTML=`<section class="page-heading"><div><div class="eyebrow">Workspace settings</div><h1>Appearance</h1><p>Choose a comfortable display for the office or jobsite.</p></div></section><section class="panel appearance-panel"><h2>Color mode</h2><p class="notice">Teal accents in both modes. Your choice is saved in this browser.</p><label><input type="radio" name="appearance" value="light" ${!dark?'checked':''}> Light — bright surfaces and dark text</label><label><input type="radio" name="appearance" value="dark" ${dark?'checked':''}> Dark — low-light surfaces and teal accents</label></section>`;
-  main.querySelectorAll('[name=appearance]').forEach(input=>input.onchange=()=>{setTheme(input.value==='dark');try{localStorage.setItem('jobscopes-theme',input.value);}catch{}});
+  host.innerHTML=`<section class="page-heading"><div><div class="eyebrow">Workspace settings</div><h1>Appearance</h1><p>Choose a comfortable display for the office or jobsite.</p></div></section><section class="panel appearance-panel"><h2>Color mode</h2><p class="notice">Teal accents in both modes. Your choice is saved in this browser.</p><label><input type="radio" name="appearance" value="light" ${!dark?'checked':''}> Light — bright surfaces and dark text</label><label><input type="radio" name="appearance" value="dark" ${dark?'checked':''}> Dark — low-light surfaces and teal accents</label></section>`;
+  host.querySelectorAll('[name=appearance]').forEach(input=>input.onchange=()=>{setTheme(input.value==='dark');try{localStorage.setItem('jobscopes-theme',input.value);}catch{}});
 }
 
 async function load() {
@@ -248,17 +249,17 @@ async function load() {
     if (ticket !== loadId) return;
     if (location.hash.startsWith('#settings')) {
       main.onclick=null;current=null;$('#breadcrumb').textContent='Settings';
-      if(location.hash==='#settings/security') await security.mount(main);
-      else if(location.hash==='#settings/profile') await companyProfile(main,{api,esc});
-      else if(location.hash==='#settings/billing') await billingView(main,{api,esc});
-      else if(location.hash==='#settings/privacy') analyticsSettings(main);
-      else if(location.hash==='#settings/checkin') checkinSettings(main,{session:account.getSession(),api,esc});
-      else if(location.hash==='#settings/appearance') appearanceView();
-      else if(location.hash==='#settings/expertise') await expertiseSettings();
-      else if(location.hash==='#settings/assistant') joe.settings(main);
-      else await account.mount();
-      if(ticket!==loadId)return;
-      main.insertAdjacentHTML('afterbegin',settingsNavigation());
+      await renderSettingsSection(main,{render:async section=>{
+      if(location.hash==='#settings/security') await security.mount(section);
+      else if(location.hash==='#settings/profile') await companyProfile(section,{api,esc});
+      else if(location.hash==='#settings/billing') await billingView(section,{api,esc});
+      else if(location.hash==='#settings/privacy') analyticsSettings(section);
+      else if(location.hash==='#settings/checkin') checkinSettings(section,{session:account.getSession(),api,esc});
+      else if(location.hash==='#settings/appearance') appearanceView(section);
+      else if(location.hash==='#settings/expertise') await expertiseSettings(section);
+      else if(location.hash==='#settings/assistant') joe.settings(section);
+      else await account.mount(section);
+      },navigation:settingsNavigation,isCurrent:()=>ticket===loadId});
     }
     else if (/^#joe(?:\/[\w-]+)?$/.test(location.hash)) {current=null; $('#breadcrumb').textContent='Ask Joe'; await joe.mount(main,location.hash.split('/')[1]||'');}
     else if(location.hash==='#help'){main.onclick=null;current=null;$('#breadcrumb').textContent='Help';helpView(main);}
