@@ -105,7 +105,7 @@ export function stripeConnect({dataDir,origin,enabled=false,mode='sandbox',allow
   if(!a){const payload=JSON.stringify({contact_email:s.email,dashboard:'full',identity:{country:'US'},defaults:{responsibilities:{fees_collector:'stripe',losses_collector:'stripe'}},configuration:{merchant:{capabilities:{card_payments:{requested:true}}}},metadata:{contractorsight_company:s.company_id}});db.prepare('INSERT INTO accounts(company,request_id,created,payload) VALUES(?,?,?,?)').run(s.company_id,randomUUID(),now(),payload);a=db.prepare('SELECT * FROM accounts WHERE company=?').get(s.company_id);}
   if(!a.account){recent(a.created);const remote=await external(()=>stripe.v2.core.accounts.create(JSON.parse(a.payload),{idempotencyKey:'cs-connect-'+a.request_id}));if(remote.livemode!==live)fail(409,'Stripe account environment does not match.');db.prepare('UPDATE accounts SET account=? WHERE company=?').run(remote.id,s.company_id);a=account(s);}
   // Return to an authenticated page; it checks status and offers a fresh link after expiry.
-  const link=await external(()=>stripe.v2.core.accountLinks.create({account:a.account,use_case:{type:'account_onboarding',account_onboarding:{refresh_url:origin+'/invoicing.html?refresh=1',return_url:origin+'/invoicing.html?returned=1'}}}));
+  const link=await external(()=>stripe.v2.core.accountLinks.create({account:a.account,use_case:{type:'account_onboarding',account_onboarding:{configurations:['merchant'],refresh_url:origin+'/invoicing.html?refresh=1',return_url:origin+'/invoicing.html?returned=1'}}}));
   return {url:stripeUrl(link.url,'connect.stripe.com')};
  }
  async function webhook(raw,signature,kind='invoices'){
