@@ -11,6 +11,8 @@ import {runUnmetered} from './paid-usage.mjs';
 import { prepareHostedPhoto } from './hosted-photo.mjs';
 import { cloudAdapter, CLOUD_MODEL } from './cloud-analysis.mjs';
 import { guestAnalysis } from './guest-analysis.mjs';
+import { foundingOffer } from './founding-offer.mjs';
+import { billingStore } from './billing.mjs';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { mkdirSync,readFileSync } from 'node:fs';
@@ -37,10 +39,11 @@ async function largeJson(req,limit=8*1024*1024) {
 }
 export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},connectOptions={},playOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
+  const profileOffer=foundingOffer(dataDir);mkdirSync(join(dataDir,'stripe-live'),{recursive:true});const profileCredits=billingStore(join(dataDir,'stripe-live'));
   const weather=weatherService();
   const portal=customerPortal(dataDir);
   const booking=appointments(dataDir);
-  const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,seatLimit:company=>{const stripePaid=billing?.hasPaidCompany(company),playPaid=play?.hasPaidCompany(company);return stripePaid||playPaid?Math.max(stripePaid?(billing.seatLimit?.(company)??1):1,playPaid?play.seatLimit(company):1):Infinity;}}),workspaces=new Map();
+  const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,companyOfferStatus:()=>profileOffer.status(),onCompanyCreated:(company,user)=>profileOffer.award({company,owner:user,reference:'business-profile:'+company,grant:details=>profileCredits.grant(details)}),seatLimit:company=>{const stripePaid=billing?.hasPaidCompany(company),playPaid=play?.hasPaidCompany(company);return stripePaid||playPaid?Math.max(stripePaid?(billing.seatLimit?.(company)??1):1,playPaid?play.seatLimit(company):1):Infinity;}}),workspaces=new Map();
   const reminders=pushReminders(dataDir,{member:auth.hasMember});
   const live=process.env.STRIPE_LIVE_BILLING==='1';
   billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,pro:process.env.STRIPE_PRO_PRICE_ID,team:process.env.STRIPE_TEAM_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount,otherSubscription:company=>play?.hasSubscription(company)??false});
@@ -49,18 +52,19 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   try{if(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)playClient=googlePlayClient(JSON.parse(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON));}catch{console.error('Google Play credentials are invalid; purchases remain disabled.');}
   play=playBilling({dataDir,client:playClient,enabled:process.env.GOOGLE_PLAY_BILLING==='1',allowTest:process.env.GOOGLE_PLAY_ALLOW_TEST==='1',products:{solo:process.env.GOOGLE_PLAY_SOLO_PRODUCT_ID,pro:process.env.GOOGLE_PLAY_PRO_PRODUCT_ID,team:process.env.GOOGLE_PLAY_TEAM_PRODUCT_ID},...playOptions,memberCount:auth.memberCount,otherSubscription:company=>billing.hasSubscription?.(company)??false});
   const paidCompany=company=>billing.hasPaidCompany(company)||play.hasPaidCompany(company);
-  const budget=(billing.live||play.ready)&&policy.hosted&&process.env.OPENAI_API_KEY?aiBudget(dataDir,{monthlyUsd:25}):null;
+  const budget=policy.hosted&&process.env.OPENAI_API_KEY?aiBudget(dataDir,{monthlyUsd:25}):null;
   const cloud=policy.hosted?(process.env.OPENAI_API_KEY?cloudAdapter({dataDir,request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:Number(process.env.AI_PILOT_MAX_ATTEMPTS||0),budget,enforcePilotLimit:true}):null):(existsSync(join(dataDir,'openai-key.dpapi'))?cloudAdapter({dataDir}):null);
   const paidCloud=budget?cloudAdapter({dataDir:join(dataDir,'paid-ai'),request:cloudRequest,unlock:async()=>process.env.OPENAI_API_KEY,prepare:prepareHostedPhoto,maxAttempts:0,budget}):null;
   const guestCloud=cloud?{status:()=>({...cloud.status(),paused:budget?.status().paused??false}),analyze:(...args)=>cloud.analyze(...args)}:null;
   const guestTrials=guestAnalysis(dataDir,{cloud:guestCloud});
   function companyCloud(company){
    if(!cloud)return null;
-   const chosen=()=>paidCompany(company)?paidCloud:cloud;
+   const hasAnalysisCredits=()=>paidCompany(company)||play.balance(company)>0;
+   const chosen=()=>hasAnalysisCredits()?paidCloud:cloud;
    const requireCloud=()=>chosen()||fail(503,'Paid AI is not configured. Contact support.');
-   return {status:()=>paidCompany(company)?{mode:'paid',remaining_attempts:budget?.status().paused?0:play.balance(company),analysis_balance:play.balance(company),joe_balance:play.balance(company,'joe'),paused:budget?.status().paused??true}:cloud.status(),
+   return {status:()=>hasAnalysisCredits()?{mode:'paid',remaining_attempts:budget?.status().paused?0:play.balance(company),analysis_balance:play.balance(company),joe_balance:play.balance(company,'joe'),paused:budget?.status().paused??true}:cloud.status(),
     analyze:(...args)=>requireCloud().analyze(...args),chat:(...args)=>requireCloud().chat(...args),
-    runSaved:(...args)=>(paidCompany(company)?play.runSaved(company):runUnmetered)(...args)};
+    runSaved:(...args)=>(hasAnalysisCredits()?play.runSaved(company):runUnmetered)(...args)};
   }
   const server=createServer(async(req,res)=>{
     const send=(status,value,type='application/json')=>{
@@ -179,7 +183,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   });
   server.on('listening',()=>reminders.start());
   server.requestTimeout=120000;
-  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();});
+  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){

@@ -1,82 +1,28 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import AgentOSPage from './pages/AgentOSPage';
-import LandingPage from './pages/LandingPage';
-import SecurityPage from './pages/SecurityPage';
-import BeliefsPage from './pages/BeliefsPage';
-import ContactPage from './pages/ContactPage';
-import PricingPage from './pages/PricingPage';
-import WebDesignPage from './pages/WebDesignPage';
+import './Hub.css';
 
-function App() {
-  const gumroadUrl = "https://kreischtech.gumroad.com/l/weieu";
+const appUrl = 'https://contractorsight-pilot.onrender.com/';
+const playUrl = 'https://play.google.com/store/apps/details?id=com.kreischtech.contractorsight';
 
-  return (
-    <Router>
-      <div className="app">
-        {/* Global Navigation */}
-        <nav className="glass" style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', width: '92%', maxWidth: '1200px', zIndex: 1000, padding: '0.85rem 1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 900, fontSize: '1.4rem', letterSpacing: '-1px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            Kreischtech <span className="gradient-text">AI</span>
-          </Link>
-          <div style={{ display: 'flex', gap: '1.4rem', alignItems: 'center' }}>
-            <Link to="/" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 700 }}>AgentOS</Link>
-            <a 
-              href="/#features" 
-              onClick={(e) => {
-                if (window.location.pathname === '/' || window.location.pathname === '/agentos') {
-                  e.preventDefault();
-                  document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
-                }
-              }} 
-              style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
-            >
-              How It Works
-            </a>
-            <a 
-              href="/#niches" 
-              onClick={(e) => {
-                if (window.location.pathname === '/' || window.location.pathname === '/agentos') {
-                  e.preventDefault();
-                  document.getElementById('niches')?.scrollIntoView({ behavior: 'smooth' });
-                }
-              }} 
-              style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
-            >
-              Supported Niches
-            </a>
-            <a 
-              href="/#pricing" 
-              onClick={(e) => {
-                if (window.location.pathname === '/' || window.location.pathname === '/agentos') {
-                  e.preventDefault();
-                  document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' });
-                }
-              }} 
-              style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
-            >
-              Pricing
-            </a>
-            <Link to="/consulting" style={{ color: 'inherit', textDecoration: 'none', fontSize: '0.9rem' }}>Consulting</Link>
-            <a href={gumroadUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ padding: '0.45rem 1.2rem', fontSize: '0.85rem', fontWeight: 800, textDecoration: 'none', borderRadius: '10px' }}>
-              Buy AgentOS ($197)
-            </a>
-          </div>
-        </nav>
-
-        {/* Page Content */}
-        <Routes>
-          <Route path="/" element={<AgentOSPage />} />
-          <Route path="/agentos" element={<AgentOSPage />} />
-          <Route path="/consulting" element={<LandingPage />} />
-          <Route path="/web-design" element={<WebDesignPage />} />
-          <Route path="/security" element={<SecurityPage />} />
-          <Route path="/beliefs" element={<BeliefsPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-        </Routes>
-      </div>
-    </Router>
-  );
+export default function App() {
+  return <div className="hub">
+    <a className="skip-link" href="#main">Skip to content</a>
+    <header className="hub-nav"><a className="brand" href="/" aria-label="KreischTech home"><img src="/contractorsight-logo.png" alt="" /><span>KreischTech<small>Software for the work ahead.</small></span></a><a className="nav-open" href={playUrl}>Get the Android app <span aria-hidden="true">↗</span></a></header>
+    <main id="main">
+      <section className="hub-hero">
+        <div><p className="eyebrow">CONTRACTORSIGHT BY KREISCHTECH</p><h1>From jobsite photo<br /><span>to a clearer plan.</span></h1><p className="intro">Capture a jobsite photo, add measurements and notes, then turn what you see into a reviewed estimate and material list. Keep project updates and costs organized in one simple workspace.</p><p className="offer-callout"><strong>First 100 new business profiles:</strong> create an account and receive one saved photo analysis free. No subscription or code required.</p><div className="hub-actions"><a className="hub-button primary" href={playUrl}>Download on Google Play <span aria-hidden="true">↗</span></a><a className="hub-button secondary" href={appUrl}>Open the web app <span aria-hidden="true">↗</span></a></div><p className="fine">Android app available on Google Play. The web app works in a browser on Android, iPhone, tablet, or computer.</p><a className="product-hunt-badge" href="https://www.producthunt.com/products/contractorsight-by-kreischtech?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-contractorsight-by-kreischtech" target="_blank" rel="noopener noreferrer"><img alt="ContractorSight by KreischTech - Turn jobsite photos into clearer plans and estimates | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1276538&amp;theme=light&amp;t=1792010592836" /></a></div>
+        <div className="hero-art"><img src="/contractorsight-feature.png" alt="ContractorSight: turn jobsite photos into clearer plans" /><div className="art-caption"><span className="status-dot" /> Built around your jobsite. Guided by your judgment.</div></div>
+      </section>
+      <section className="hub-features" aria-labelledby="features-title"><p className="eyebrow">FROM PHOTO TO PLAN</p><h2 id="features-title">Less paperwork. More forward progress.</h2><div className="feature-grid">
+        <article><span className="feature-number">01 / OBSERVE</span><h3>Start with a photo</h3><p>Analyze visible jobsite conditions, flag potential concerns, and add your own measurements and notes.</p></article>
+        <article><span className="feature-number">02 / PLAN</span><h3>Build out the details</h3><p>Develop estimated costs and material lists as you collect information. Ask Joe for help thinking through the next step.</p></article>
+        <article><span className="feature-number">03 / ORGANIZE</span><h3>Keep the job together</h3><p>Bring project photos, work items, crews, and costs into one place, accessible from the field or your desk.</p></article>
+      <article><span className="feature-number">04 / CONNECT</span><h3>Keep your customers informed</h3><p>Share progress, selected photos, milestones and expected completion through a private customer link. Exchange simple project messages while keeping internal finances private. No customer account or app download needed.</p></article></div><p className="judgment">You stay in charge. AI observations and estimates need your review; they do not certify structural safety, code compliance, or buildability.</p></section>
+      <section className="access-section" id="get-started" aria-labelledby="access-title"><p className="eyebrow">GET STARTED</p><h2 id="access-title">Tools for the field and the office.</h2><div className="access-grid">
+        <article className="access-card"><span className="badge">WEB APP</span><h3>Open it. Get to work.</h3><p>Use ContractorSight in your browser on Android, iPhone, tablet, or computer. Sign in to your account to access your workspace.</p><a className="hub-button primary" href={appUrl}>Launch web app <span aria-hidden="true">↗</span></a><p className="fine">No app-store download required. Plans and AI allowances are shown in the app.</p></article>
+        <article className="access-card" id="android"><span className="badge muted">ANDROID APP</span><h3>Get ContractorSight on Google Play.</h3><p>Take the photo workflow into the field. Review site observations, measurements, estimates, materials, and project details from your Android phone.</p><a className="hub-button secondary" href={playUrl}>Download from Google Play <span aria-hidden="true">↗</span></a><p className="fine">Google Play availability depends on your country and device.</p></article>
+      </div></section>
+      <section className="hub-support"><div><p className="eyebrow">BUILT WITH CONTRACTORS</p><h2>Have a question or an idea?</h2><p>Tell us what would make your next job easier. Having work done? Recommend ContractorSight to your contractor for clearer progress updates and a simple place to ask questions.</p></div><a className="hub-button secondary" href="mailto:kreischtech@gmail.com">Contact KreischTech</a></section>
+    </main>
+    <footer className="hub-footer"><div><strong>KreischTech</strong><p>Kreischtech Contractors LLC, doing business as KreischTech</p></div><a href="mailto:kreischtech@gmail.com">kreischtech@gmail.com</a></footer>
+  </div>;
 }
-
-export default App;

@@ -10,7 +10,7 @@ const email=s=>typeof s==='string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.
 const password=s=>typeof s==='string' && s.length>=16 && s.length<=256 ? s : fail(400,'Use a password of 16–256 characters.');
 const kdf={N:32768,r:8,p:1,maxmem:64*1024*1024};
 const SESSION_MS=8*60*60*1000;
-export function accounts(dataDir,{secureCookies=false,registrationCode=null,seatLimit=()=>Infinity}={}) {
+export function accounts(dataDir,{secureCookies=false,registrationCode=null,seatLimit=()=>Infinity,onCompanyCreated=null,companyOfferStatus=null}={}) {
   const db=new DatabaseSync(join(dataDir,'accounts.sqlite'));
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,salt TEXT NOT NULL,password_hash TEXT NOT NULL);
@@ -20,6 +20,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
     CREATE TABLE IF NOT EXISTS invites(token_hash TEXT PRIMARY KEY,company_id TEXT REFERENCES companies(id),email TEXT NOT NULL,role TEXT NOT NULL,expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS attempts(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS password_resets(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS company_creation_rewards(company_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,company_id TEXT,actor_id TEXT,action TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS memberships_company ON memberships(company_id);
     CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires);
@@ -29,6 +30,13 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
   const memberCount=company=>db.prepare('SELECT count(*) n FROM memberships WHERE company_id=?').get(company).n;
   const checkSeat=company=>{if(memberCount(company)>=seatLimit(company))fail(409,'Your current plan has no available team seats. Choose a larger plan or remove a member.');};
   const audit=(company,user,action)=>db.prepare('INSERT INTO audit(company_id,actor_id,action,created_at) VALUES(?,?,?,?)').run(company,user,action,new Date().toISOString());
+  async function processCompanyReward(company,user){
+    if(typeof onCompanyCreated!=='function')return null;
+    const pending=db.prepare('SELECT processed FROM company_creation_rewards WHERE company_id=? AND user_id=?').get(company,user);
+    if(!pending||pending.processed)return null;
+    try{const result=await onCompanyCreated(company,user);db.prepare('UPDATE company_creation_rewards SET processed=1 WHERE company_id=? AND user_id=?').run(company,user);return result;}
+    catch(error){console.error('Welcome analysis credit could not be granted yet. It will retry at sign-in.',error?.message||'');return {pending:true};}
+  }
   function limit(key) {
     const now=Date.now();db.prepare('DELETE FROM attempts WHERE expires<?').run(now);
     const r=db.prepare('SELECT * FROM attempts WHERE key=?').get(key);
@@ -52,7 +60,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
   async function handle(req,url,json,send,res) {
     const path=url.pathname;
     if(!path.startsWith('/api/account/')) return false;
-    if(req.method==='GET' && path==='/api/account/session') {const s=session(req);send(200,s?{user:{name:s.name,email:s.email},company:{id:s.company_id,name:s.company_name,role:s.role},companies:db.prepare('SELECT c.id,c.name,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? ORDER BY c.name').all(s.user_id)}:{user:null,registration_requires_code:registrationCode!==null});return true;}
+    if(req.method==='GET' && path==='/api/account/session') {const s=session(req);if(s)await processCompanyReward(s.company_id,s.user_id);send(200,s?{user:{name:s.name,email:s.email},company:{id:s.company_id,name:s.company_name,role:s.role},companies:db.prepare('SELECT c.id,c.name,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? ORDER BY c.name').all(s.user_id)}:{user:null,registration_requires_code:registrationCode!==null,profile_offer:typeof companyOfferStatus==='function'?companyOfferStatus():null});return true;}
     if(req.method==='POST' && path==='/api/account/reset-password') {
       limit('reset:'+req.socket.remoteAddress);
       const b=await json(req),mail=email(b.email),pass=password(b.password);
@@ -83,9 +91,9 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
           if(db.prepare('SELECT id FROM users WHERE email=?').get(mail)) fail(409,'This account cannot be created. Try signing in.');
           db.prepare('INSERT INTO users VALUES(?,?,?,?,?)').run(id,mail,name,salt,key.toString('hex'));
           db.prepare('INSERT INTO companies VALUES(?,?)').run(companyId,company);
-          db.prepare('INSERT INTO memberships VALUES(?,?,?)').run(id,companyId,'Owner');audit(companyId,id,'company.created');
+          db.prepare('INSERT INTO memberships VALUES(?,?,?)').run(id,companyId,'Owner');if(typeof onCompanyCreated==='function')db.prepare('INSERT INTO company_creation_rewards(company_id,user_id) VALUES(?,?)').run(companyId,id);audit(companyId,id,'company.created');
         });}finally{key.fill(0);}
-        issue(req,res,id,companyId);send(201,{saved:true});return true;
+        const welcome=await processCompanyReward(companyId,id);issue(req,res,id,companyId);send(201,{saved:true,photo_analysis_bonus:welcome?.granted===true});return true;
       }
       const user=db.prepare('SELECT * FROM users WHERE email=?').get(mail);
       const key=await derive(pass,user?.salt||'00000000000000000000000000000000',32,kdf);
@@ -93,6 +101,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
       if(!user || !valid) fail(401,'Email or password is incorrect.');
       const membership=db.prepare('SELECT company_id FROM memberships WHERE user_id=? ORDER BY company_id LIMIT 1').get(user.id);
       if(!membership) fail(403,'This account has no active company membership.');
+      await processCompanyReward(membership.company_id,user.id);
       issue(req,res,user.id,membership.company_id);audit(membership.company_id,user.id,'session.login');send(200,{saved:true});return true;
     }
     const s=session(req);if(!s) fail(401,'Sign in to continue.');
@@ -105,8 +114,8 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
     }
     if(req.method==='POST' && path==='/api/account/companies') {
       const b=await json(req),name=label(b.name),id=randomUUID();
-      transaction(()=>{db.prepare('INSERT INTO companies VALUES(?,?)').run(id,name);db.prepare('INSERT INTO memberships VALUES(?,?,?)').run(s.user_id,id,'Owner');audit(id,s.user_id,'company.created');});
-      issue(req,res,s.user_id,id);send(201,{saved:true});return true;
+      transaction(()=>{db.prepare('INSERT INTO companies VALUES(?,?)').run(id,name);db.prepare('INSERT INTO memberships VALUES(?,?,?)').run(s.user_id,id,'Owner');if(typeof onCompanyCreated==='function')db.prepare('INSERT INTO company_creation_rewards(company_id,user_id) VALUES(?,?)').run(id,s.user_id);audit(id,s.user_id,'company.created');});
+      const welcome=await processCompanyReward(id,s.user_id);issue(req,res,s.user_id,id);send(201,{saved:true,photo_analysis_bonus:welcome?.granted===true});return true;
     }
     if(req.method==='POST' && path==='/api/account/join') {
       const b=await json(req);transaction(()=>{
