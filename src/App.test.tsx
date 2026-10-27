@@ -1,36 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import App from './App';
 
-describe('KaiAI Website', () => {
-  it('renders the hero section with company name', () => {
+describe('ContractorSight hub', () => {
+  it('explains ContractorSight and links directly to the public Play listing and web app', () => {
     render(<App />);
-    const kaiElements = screen.getAllByText(/Kai/i);
-    expect(kaiElements.length).toBeGreaterThan(0);
-  });
-
-  it('displays the construction-first value proposition on landing page', () => {
-    render(<App />);
-    expect(screen.getByText(/Secure, Local AI Built for the/i)).toBeInTheDocument();
-  });
-
-  it('shows the core service packages with "Starting at" pricing', () => {
-    render(<App />);
-    expect(screen.getByText(/The Foundation/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$15k/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$75k/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$250k/i)).toBeInTheDocument();
-  });
-
-  it('navigates to the Data Security page', async () => {
-    render(<App />);
-    const securityLinks = screen.getAllByText(/Data Security/i);
-    
-    // Click the nav link
-    fireEvent.click(securityLinks[0]);
-    
-    // Check for the "Security-First" span specifically or use a function matcher
-    expect(await screen.findByText(/Security-First/i)).toBeInTheDocument();
-    expect(screen.getByText(/Local-First Architecture/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open the web app/ })).toHaveAttribute('href', 'https://contractorsight-pilot.onrender.com/');
+    expect(screen.getByRole('link', { name: /Download on Google Play/ })).toHaveAttribute('href', 'https://play.google.com/store/apps/details?id=com.kreischtech.contractorsight');
+    expect(screen.queryByText(/open-testing release|test access|submitted for Google review/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/reviewed estimate and material list/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Buy AgentOS/)).not.toBeInTheDocument();
   });
 });
