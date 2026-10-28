@@ -93,7 +93,8 @@ test('hosted paid account uses Joe credits, keeps saved replies free and blocks 
  const question={question:'Help me plan',request_id:'paid-joe-request-one',include_context:false};
  const answer=await a.send('/api/joe',question);assert.equal(answer.status,201,JSON.stringify(answer.body));
  assert.equal((await a.send('/api/joe',question)).body.reused,true);assert.equal(calls,1);
- const balances=(await a.send('/api/billing')).body;assert.equal(balances.balance,25);assert.equal(balances.joe_balance,24);
+ // The first business profile receives one welcome photo analysis in addition to Solo's 25.
+ const balances=(await a.send('/api/billing')).body;assert.equal(balances.balance,26);assert.equal(balances.joe_balance,24);
  assert.equal((await b.send('/api/billing')).body.joe_balance,0);
  assert.equal((await a.send('/api/billing/cancel',{})).status,200);
  assert.equal((await a.send('/api/billing')).body.subscriptions[0].cancel_at_end,1);
