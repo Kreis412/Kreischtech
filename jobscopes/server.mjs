@@ -13,6 +13,7 @@ import { cloudAdapter, CLOUD_MODEL } from './cloud-analysis.mjs';
 import { guestAnalysis } from './guest-analysis.mjs';
 import { foundingOffer } from './founding-offer.mjs';
 import { billingStore } from './billing.mjs';
+import { analysisPromos } from './analysis-promos.mjs';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { mkdirSync,readFileSync } from 'node:fs';
@@ -39,7 +40,7 @@ async function largeJson(req,limit=8*1024*1024) {
 }
 export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},connectOptions={},playOptions={},cloudRequest=fetch}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
-  const profileOffer=foundingOffer(dataDir);mkdirSync(join(dataDir,'stripe-live'),{recursive:true});const profileCredits=billingStore(join(dataDir,'stripe-live'));
+  const profileOffer=foundingOffer(dataDir);mkdirSync(join(dataDir,'stripe-live'),{recursive:true});const profileCredits=billingStore(join(dataDir,'stripe-live'));const analysisPromo=analysisPromos(dataDir,{credits:profileCredits,code:process.env.CONTRACTORSIGHT_ANALYSIS_PROMO_CODE,maxRedemptions:Number(process.env.CONTRACTORSIGHT_ANALYSIS_PROMO_MAX_REDEMPTIONS||5)});
   const weather=weatherService();
   const portal=customerPortal(dataDir);
   const booking=appointments(dataDir);
@@ -123,6 +124,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(url.pathname==='/api/booking/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.publicStatus(req.headers['x-booking-token']));}
       if(url.pathname==='/api/booking'){if(req.method==='GET')return send(200,booking.publicView(req.headers['x-booking-token'],url.searchParams.get('date')));if(req.method==='POST')return send(201,booking.request(req.headers['x-booking-token'],await json(req)));fail(405,'Method not allowed.');}
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(url.pathname==='/api/promo/analysis'){if(req.method==='GET')return send(200,analysisPromo.status());if(req.method==='POST')return send(200,analysisPromo.redeem(session.company_id,(await json(req)).code));fail(405,'Method not allowed.');}
       if(url.pathname==='/api/connect/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,await connect.status(session));}
       if(url.pathname.startsWith('/api/connect/')){
         if(!connect.ready)fail(503,'Contractor invoicing is not configured.');
@@ -183,7 +185,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   });
   server.on('listening',()=>reminders.start());
   server.requestTimeout=120000;
-  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();});
+  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();analysisPromo.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
