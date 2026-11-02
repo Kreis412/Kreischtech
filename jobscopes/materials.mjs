@@ -97,7 +97,19 @@ export function materialsStore(db) {
     CREATE TABLE IF NOT EXISTS estimate_pricing (
     project_id TEXT PRIMARY KEY REFERENCES projects(id), markup REAL, notes TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS estimate_sources(project_id TEXT NOT NULL,kind TEXT NOT NULL,source_id TEXT NOT NULL,item_id TEXT NOT NULL REFERENCES material_items(id),source_revision INTEGER NOT NULL,reviewer TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(project_id,kind,source_id));
-    PRAGMA user_version = 3;`);
+    -- No project foreign key: company corrections survive project deletion.
+    CREATE TABLE IF NOT EXISTS estimate_correction_history(
+      id TEXT PRIMARY KEY, source_project_id TEXT NOT NULL, project_label TEXT NOT NULL,
+      item_key TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, unit TEXT NOT NULL,
+      unit_cents INTEGER NOT NULL, quantity REAL, waste REAL, notes TEXT NOT NULL DEFAULT '',
+      price_source TEXT NOT NULL DEFAULT '', price_date TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS estimate_correction_key_idx ON estimate_correction_history(item_key, created_at DESC);
+    CREATE TABLE IF NOT EXISTS estimate_quotes(
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, project_label TEXT NOT NULL,
+      client_name TEXT NOT NULL, valid_until TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL, content TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS estimate_quote_project_idx ON estimate_quotes(project_id, created_at DESC);
+    PRAGMA user_version = 4;`);
   function sources(projectId){
     const discoveries=db.prepare('SELECT id,title,description,revision,status FROM discoveries WHERE project_id=?').all(projectId).map(d=>({...d,kind:'discovery',eligible:true}));
     const hasOperations=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='operations_records'").get();
@@ -150,7 +162,9 @@ export function materialsStore(db) {
       const content = JSON.parse(s.content); return { id: s.id, label: s.label, created_at: s.created_at, total_cents: content.totals.total_cents, selling_cents: content.selling_cents ?? null, flag_count: content.flags.length, token: content.token };
     });
     const latest = snapshots[0];
-    return { ...result, estimated_return_percent: totals.total_cents > 0 && markup_cents !== null ? markup_cents / totals.total_cents * 100 : null, token, snapshots, changed_since_snapshot: Boolean(latest && latest.token !== token), delta_cents: latest ? totals.total_cents - latest.total_cents : null };
+    const corrections = db.prepare('SELECT id,name,kind,unit,unit_cents,quantity,waste,notes,price_source,price_date,created_at FROM estimate_correction_history ORDER BY created_at DESC LIMIT 50').all();
+    const quotes = db.prepare('SELECT id,client_name,valid_until,created_at FROM estimate_quotes WHERE project_id=? ORDER BY created_at DESC').all(projectId);
+    return { ...result, estimated_return_percent: totals.total_cents > 0 && markup_cents !== null ? markup_cents / totals.total_cents * 100 : null, token, snapshots, quotes, corrections, changed_since_snapshot: Boolean(latest && latest.token !== token), delta_cents: latest ? totals.total_cents - latest.total_cents : null };
   }
   function seed(projectId, modules) {
     if (!Array.isArray(modules) || !modules.length || modules.length > 8 || modules.some(k => !Object.hasOwn(templates, k))) fail(400, 'Select valid checklist sections.');
@@ -183,6 +197,38 @@ export function materialsStore(db) {
     } else db.prepare('INSERT INTO material_items(id,project_id,section,name,kind,unit,quantity,waste,unit_cents,status,notes,exclusion_reason,price_source,price_date,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), projectId, ...values, now, now);
   }
   return { state, seed, async handle(req, path, project, json, send) {
+    const correctionPath=path.match(/^\/api\/projects\/([\w-]+)\/estimate\/corrections$/);
+    if(correctionPath){
+      const [,pid]=correctionPath;const projectRecord=project(pid);
+      if(req.method==='GET'){send(200,db.prepare('SELECT id,name,kind,unit,unit_cents,quantity,waste,notes,price_source,price_date,created_at FROM estimate_correction_history ORDER BY created_at DESC LIMIT 100').all());return true;}
+      if(req.method==='POST'){
+        const b=await json(req),name=text(b.name,'item name',160,true),kind=choose(b.kind,kinds,'cost type'),unit=choose(b.unit,units,'unit');
+        const price=decimal(b.unit_price,'Unit price',1000000,2);if(price===null)fail(400,'Enter a unit price to save a business correction.');
+        const quantity=decimal(b.quantity,'Quantity',100000,3),waste=kind==='Material'?decimal(b.waste,'Waste percent',100,2):0;
+        const now=new Date().toISOString(),note=text(b.notes??'','correction notes',2000),key=name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()+'|'+kind+'|'+unit;
+        db.prepare('INSERT INTO estimate_correction_history VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),pid,projectRecord.name,key,name,kind,unit,Math.round(price*100),quantity,waste,note,text(b.price_source??'','price source',300),text(b.price_date??'','price date',10),now);
+        send(201,state(pid));return true;
+      }
+      fail(405,'Method not allowed.');
+    }
+    const quotePath=path.match(/^\/api\/projects\/([\w-]+)\/estimate\/quotes(?:\/([\w-]+))?$/);
+    if(quotePath){
+      const [,pid,quoteId]=quotePath;const projectRecord=project(pid);
+      if(req.method==='GET'&&quoteId){const q=db.prepare('SELECT * FROM estimate_quotes WHERE id=? AND project_id=?').get(quoteId,pid)||fail(404,'Quote not found.');send(200,{...q,content:JSON.parse(q.content)});return true;}
+      if(req.method==='POST'&&!quoteId){
+        const b=await json(req),current=state(pid);
+        if(b.token!==current.token)fail(409,'The estimate changed. Refresh and review it before creating a quote.');
+        const lines=current.items.filter(i=>i.status==='Included'&&i.total_cents!==null);
+        if(!lines.length)fail(400,'Include and price at least one estimate line before creating a quote.');
+        if(current.flags.length&&b.confirm_gaps!==true)fail(400,'Review the estimate gaps and confirm that the quote is partial.');
+        const client=text(b.client_name??'','customer name',160),valid=text(b.valid_until??'','valid-through date',10),notes=text(b.notes??'','quote notes',3000);
+        if(valid&&(!/^\d{4}-\d{2}-\d{2}$/.test(valid)||!Number.isFinite(Date.parse(valid))))fail(400,'Enter a valid quote expiration date.');
+        const content={project:projectRecord.name,client,valid_until:valid,notes,created_at:new Date().toISOString(),currency:'USD',cost_total_cents:current.totals.total_cents,markup_cents:current.markup_cents,selling_cents:current.selling_cents,lines:lines.map(i=>({name:i.name,kind:i.kind,unit:i.unit,quantity:i.quantity,unit_cents:i.unit_cents,total_cents:i.total_cents,notes:i.notes})),partial:Boolean(current.flags.length),review_gaps:current.flags.map(f=>f.message),tax_note:'Taxes are not included unless you added them as estimate lines.'};
+        const id=randomUUID();db.prepare('INSERT INTO estimate_quotes VALUES(?,?,?,?,?,?,?,?)').run(id,pid,projectRecord.name,client,valid,notes,content.created_at,JSON.stringify(content));
+        send(201,{id,client_name:client,valid_until:valid,created_at:content.created_at,content});return true;
+      }
+      fail(405,'Method not allowed.');
+    }
     const sourcePath=path.match(/^\/api\/projects\/([\w-]+)\/estimate\/sources\/([\w-]+)$/);
     if(sourcePath&&req.method==='POST'){
       const [,pid,sourceId]=sourcePath;project(pid);const b=await json(req);
