@@ -218,6 +218,7 @@ export function materialsStore(db) {
       if(req.method==='POST'&&!quoteId){
         const b=await json(req),current=state(pid);
         if(b.token!==current.token)fail(409,'The estimate changed. Refresh and review it before creating a quote.');
+        if(current.selling_cents===null)fail(400,'Set a markup before creating a customer quote so the quoted total is clear.');
         const lines=current.items.filter(i=>i.status==='Included'&&i.total_cents!==null);
         if(!lines.length)fail(400,'Include and price at least one estimate line before creating a quote.');
         if(current.flags.length&&b.confirm_gaps!==true)fail(400,'Review the estimate gaps and confirm that the quote is partial.');
