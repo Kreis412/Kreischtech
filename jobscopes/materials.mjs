@@ -13,6 +13,11 @@ function decimal(v, name, max, places) {
   return n;
 }
 const choose = (v, choices, name) => choices.includes(v) ? v : fail(400, `Choose a valid ${name}.`);
+function dateOnly(value,name){
+  const date=text(value??'',name,10);
+  if(date&&(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date))fail(400,`Enter a valid ${name}.`);
+  return date;
+}
 const sections = ['Basement finishing', 'Music room', 'Bathroom', 'Kitchen', 'Deck / outdoor', 'General work', 'Project costs'];
 const kinds = ['Material', 'Labor', 'Other cost'];
 const units = ['each', 'sq ft', 'linear ft', 'sheet', 'bag', 'box', 'roll', 'tube', 'gallon', 'hour', 'day', 'allowance'];
@@ -196,17 +201,20 @@ export function materialsStore(db) {
       if (!updated.changes) fail(409, 'This item changed on another screen. Close the form, refresh, and try again.');
     } else db.prepare('INSERT INTO material_items(id,project_id,section,name,kind,unit,quantity,waste,unit_cents,status,notes,exclusion_reason,price_source,price_date,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(), projectId, ...values, now, now);
   }
+  function rememberCorrection(pid,projectRecord,b){
+    const name=text(b.name,'item name',160,true),kind=choose(b.kind,kinds,'cost type'),unit=choose(b.unit,units,'unit');
+    const price=decimal(b.unit_price,'Unit price',1000000,2);if(price===null)fail(400,'Enter a unit price to save a business correction.');
+    const quantity=decimal(b.quantity,'Quantity',100000,3),waste=kind==='Material'?decimal(b.waste,'Waste percent',100,2):0;
+    const now=new Date().toISOString(),note=text(b.notes??'','correction notes',2000),key=name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()+'|'+kind+'|'+unit;
+    db.prepare('INSERT INTO estimate_correction_history VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),pid,projectRecord.name,key,name,kind,unit,Math.round(price*100),quantity,waste,note,text(b.price_source??'','price source',300),dateOnly(b.price_date,'price date'),now);
+  }
   return { state, seed, async handle(req, path, project, json, send) {
     const correctionPath=path.match(/^\/api\/projects\/([\w-]+)\/estimate\/corrections$/);
     if(correctionPath){
       const [,pid]=correctionPath;const projectRecord=project(pid);
       if(req.method==='GET'){send(200,db.prepare('SELECT id,name,kind,unit,unit_cents,quantity,waste,notes,price_source,price_date,created_at FROM estimate_correction_history ORDER BY created_at DESC LIMIT 100').all());return true;}
       if(req.method==='POST'){
-        const b=await json(req),name=text(b.name,'item name',160,true),kind=choose(b.kind,kinds,'cost type'),unit=choose(b.unit,units,'unit');
-        const price=decimal(b.unit_price,'Unit price',1000000,2);if(price===null)fail(400,'Enter a unit price to save a business correction.');
-        const quantity=decimal(b.quantity,'Quantity',100000,3),waste=kind==='Material'?decimal(b.waste,'Waste percent',100,2):0;
-        const now=new Date().toISOString(),note=text(b.notes??'','correction notes',2000),key=name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()+'|'+kind+'|'+unit;
-        db.prepare('INSERT INTO estimate_correction_history VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),pid,projectRecord.name,key,name,kind,unit,Math.round(price*100),quantity,waste,note,text(b.price_source??'','price source',300),text(b.price_date??'','price date',10),now);
+        rememberCorrection(pid,projectRecord,await json(req));
         send(201,state(pid));return true;
       }
       fail(405,'Method not allowed.');
@@ -222,9 +230,8 @@ export function materialsStore(db) {
         const lines=current.items.filter(i=>i.status==='Included'&&i.total_cents!==null);
         if(!lines.length)fail(400,'Include and price at least one estimate line before creating a quote.');
         if(current.flags.length&&b.confirm_gaps!==true)fail(400,'Review the estimate gaps and confirm that the quote is partial.');
-        const client=text(b.client_name??'','customer name',160),valid=text(b.valid_until??'','valid-through date',10),notes=text(b.notes??'','quote notes',3000);
-        if(valid&&(!/^\d{4}-\d{2}-\d{2}$/.test(valid)||!Number.isFinite(Date.parse(valid))))fail(400,'Enter a valid quote expiration date.');
-        const content={project:projectRecord.name,client,valid_until:valid,notes,created_at:new Date().toISOString(),currency:'USD',cost_total_cents:current.totals.total_cents,markup_cents:current.markup_cents,selling_cents:current.selling_cents,lines:lines.map(i=>({name:i.name,kind:i.kind,unit:i.unit,quantity:i.quantity,unit_cents:i.unit_cents,total_cents:i.total_cents,notes:i.notes})),partial:Boolean(current.flags.length),review_gaps:current.flags.map(f=>f.message),tax_note:'Taxes are not included unless you added them as estimate lines.'};
+        const client=text(b.client_name??'','customer name',160),valid=dateOnly(b.valid_until,'quote expiration date'),notes=text(b.notes??'','quote notes',3000);
+        const content={project:projectRecord.name,client,valid_until:valid,notes,created_at:new Date().toISOString(),currency:'USD',cost_total_cents:current.totals.total_cents,markup_cents:current.markup_cents,selling_cents:current.selling_cents,lines:lines.map(i=>({name:i.name,kind:i.kind,unit:i.unit,quantity:i.quantity,waste:i.waste,unit_cents:i.unit_cents,total_cents:i.total_cents,notes:i.notes})),partial:Boolean(current.flags.length),review_gaps:current.flags.map(f=>f.message),tax_note:'Taxes are not included unless you added them as estimate lines.'};
         const id=randomUUID();db.prepare('INSERT INTO estimate_quotes VALUES(?,?,?,?,?,?,?,?)').run(id,pid,projectRecord.name,client,valid,notes,content.created_at,JSON.stringify(content));
         send(201,{id,client_name:client,valid_until:valid,created_at:content.created_at,content});return true;
       }
@@ -257,7 +264,14 @@ export function materialsStore(db) {
     }
     const b = await json(req);
     if (req.method === 'POST' && resource === 'seed' && !id) seed(projectId, b.modules);
-    else if (resource === 'items' && ((req.method === 'POST' && !id) || (req.method === 'PUT' && id))) saveItem(projectId, id, b);
+    else if (resource === 'items' && ((req.method === 'POST' && !id) || (req.method === 'PUT' && id))) {
+      db.exec('BEGIN IMMEDIATE');
+      try{
+        saveItem(projectId,id,b);
+        if(b.remember_correction===true||b.remember_correction==='yes')rememberCorrection(projectId,project(projectId),b);
+        db.exec('COMMIT');
+      }catch(error){db.exec('ROLLBACK');throw error;}
+    }
     else if (req.method === 'PUT' && resource === 'checks' && id) {
       if (!db.prepare('SELECT id FROM estimate_checks WHERE id=? AND project_id=?').get(id, projectId)) fail(404, 'Check not found.');
       if (typeof b.resolved !== 'boolean') fail(400, 'Choose a review outcome.');
