@@ -124,6 +124,9 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(url.pathname==='/api/booking/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.publicStatus(req.headers['x-booking-token']));}
       if(url.pathname==='/api/booking'){if(req.method==='GET')return send(200,booking.publicView(req.headers['x-booking-token'],url.searchParams.get('date')));if(req.method==='POST')return send(201,booking.request(req.headers['x-booking-token'],await json(req)));fail(405,'Method not allowed.');}
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(req.headers['x-note-company']||req.headers['x-note-owner']){
+        if(req.headers['x-note-company']!==session.company_id||req.headers['x-note-owner']!==encodeURIComponent(session.email))fail(409,'Sign in to the original account and business to sync this field note.');
+      }
       if(url.pathname==='/api/promo/analysis'){if(req.method==='GET')return send(200,analysisPromo.status());if(req.method==='POST')return send(200,analysisPromo.redeem(session.company_id,(await json(req)).code));fail(405,'Method not allowed.');}
       if(url.pathname==='/api/connect/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,await connect.status(session));}
       if(url.pathname.startsWith('/api/connect/')){

@@ -61,6 +61,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
       status TEXT NOT NULL, next_step TEXT NOT NULL, photo_id TEXT REFERENCES photos(id),
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS photo_upload_requests(actor TEXT NOT NULL,upload_id TEXT NOT NULL,project_id TEXT NOT NULL,fingerprint TEXT NOT NULL,photo_id TEXT NOT NULL REFERENCES photos(id),PRIMARY KEY(actor,upload_id));
+    CREATE TABLE IF NOT EXISTS field_note_requests(actor TEXT NOT NULL,note_id TEXT NOT NULL,project_id TEXT NOT NULL,fingerprint TEXT NOT NULL,discovery_id TEXT NOT NULL REFERENCES discoveries(id) ON DELETE CASCADE,PRIMARY KEY(actor,note_id));
     `);
   const expertise = businessExpertise(db);
   const estimates = materialsStore(db);
@@ -132,7 +133,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
           try {
             db.exec('PRAGMA defer_foreign_keys=ON');
             db.prepare('DELETE FROM photo_measurements WHERE photo_id IN (SELECT id FROM photos WHERE project_id=?)').run(id);
-            for (const table of ['estimate_sources','material_items','estimate_checks','estimate_context','estimate_snapshots','estimate_pricing','job_metrics','operations_records','photo_analyses','blueprint_analyses','photo_upload_requests','discoveries','photos','joe_exchanges']) {
+            for (const table of ['estimate_quotes','field_note_requests','estimate_sources','material_items','estimate_checks','estimate_context','estimate_snapshots','estimate_pricing','job_metrics','operations_records','photo_analyses','blueprint_analyses','photo_upload_requests','discoveries','photos','joe_exchanges']) {
               db.prepare('DELETE FROM '+table+' WHERE project_id=?').run(id);
             }
             db.prepare('UPDATE cash_entries SET project_id=NULL,revision=revision+1 WHERE project_id=?').run(id);
@@ -187,6 +188,26 @@ export function createApp({ dataDir = process.env.DATA_DIR || join(ROOT, 'data')
         const photoId = b.photo_id || null;
         if (photoId && (typeof photoId !== 'string' || !db.prepare('SELECT id FROM photos WHERE id=? AND project_id=?').get(photoId, projectId))) fail(400, 'Choose a photo from this project.');
         const values = [text(b.title, 'Discovery title', 160, true), text(b.description ?? '', 'Description'), choice(b.category, CATEGORIES, 'category'), choice(b.priority, PRIORITIES, 'priority'), choice(b.status, ['Open', 'Resolved'], 'status'), text(b.next_step ?? '', 'Next step', 2000), photoId];
+        if (!existingId && b.client_note_id !== undefined) {
+          const noteId=text(b.client_note_id,'Note identifier',100,true);
+          if(!/^[\w-]+$/.test(noteId))fail(400,'Invalid note identifier.');
+          const actor=req.jobscopesActor?.id||'local',fingerprint=createHash('sha256').update(JSON.stringify([projectId,...values])).digest('hex');
+          db.exec('BEGIN IMMEDIATE');
+          let saved;
+          try {
+            const prior=db.prepare('SELECT * FROM field_note_requests WHERE actor=? AND note_id=?').get(actor,noteId);
+            if(prior){
+              if(prior.project_id!==projectId||prior.fingerprint!==fingerprint)fail(409,'This saved note identifier belongs to different content.');
+              saved=db.prepare('SELECT * FROM discoveries WHERE id=?').get(prior.discovery_id);
+            }else{
+              db.prepare('INSERT INTO discoveries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)').run(id,projectId,...values,now,now);
+              db.prepare('INSERT INTO field_note_requests VALUES(?,?,?,?,?)').run(actor,noteId,projectId,fingerprint,id);
+              saved=db.prepare('SELECT * FROM discoveries WHERE id=?').get(id);
+            }
+            db.exec('COMMIT');
+          }catch(error){db.exec('ROLLBACK');throw error;}
+          return send(201,saved);
+        }
         if (existingId) {
           const result = db.prepare('UPDATE discoveries SET title=?, description=?, category=?, priority=?, status=?, next_step=?, photo_id=?, updated_at=?, revision=revision+1 WHERE id=? AND project_id=? AND revision=?').run(...values, now, id, projectId, Number(b.revision) || 0);
           if (!result.changes) fail(409, 'This discovery changed on another screen. Close this form, refresh, and try again.');

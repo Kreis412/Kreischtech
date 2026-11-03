@@ -297,3 +297,16 @@ body[data-signed-in=false] .shell{min-height:100vh;margin-left:0}body[data-signe
 .analytics-choice{position:fixed;bottom:16px;left:16px;right:16px;max-width:640px;margin:auto;z-index:1500;box-shadow:0 8px 40px #0006}.analytics-choice button{min-height:44px}
 
 .photo-estimate-output{margin-top:16px;padding:16px;border:1px solid var(--line);border-left:4px solid var(--green);border-radius:10px;background:var(--paper)}.photo-estimate-output[hidden]{display:none}.photo-estimate-detail h4{margin:0 0 8px;font-size:1.1rem}.photo-estimate-detail .notice{margin:8px 0 14px}.photo-estimate-lines{display:grid;gap:0}.photo-estimate-lines>div{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:12px 0;border-top:1px solid var(--line)}.photo-estimate-lines>div>span{min-width:0;display:grid;gap:4px}.photo-estimate-lines small{color:var(--muted);line-height:1.45}.photo-estimate-lines b{text-align:right;white-space:nowrap}.photo-estimate-output .actions{margin-top:12px}.photo-estimate-output button{min-height:44px}@media(max-width:480px){.photo-estimate-output{padding:12px}.photo-estimate-lines>div{gap:8px;flex-direction:column}.photo-estimate-lines b{text-align:left}}
+
+/* Customer quotes print without workspace navigation or modal clipping. */
+@media print {
+ body:has(#editor.customer-quote[open]) > :not(#editor){display:none!important}
+ body:has(#editor.customer-quote[open]){background:white!important;color:black!important;display:block!important}
+ #editor.customer-quote[open]{position:static!important;display:block!important;width:100%!important;max-width:none!important;max-height:none!important;height:auto!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;box-shadow:none!important;background:white!important;color:black!important}
+ #editor.customer-quote::backdrop{background:transparent}
+ #editor.customer-quote .dialog-actions{display:none!important}
+ #editor.customer-quote *{color:black!important;overflow:visible!important}
+ #editor.customer-quote table{width:100%;border-collapse:collapse}
+ #editor.customer-quote th,#editor.customer-quote td{border-bottom:1px solid #ccc;padding:8px;text-align:left}
+ #editor.customer-quote tr{break-inside:avoid}
+}
