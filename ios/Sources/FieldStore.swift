@@ -6,6 +6,11 @@ struct FieldEntry: Codable, Identifiable {
     let createdAt: Date
     let note: String
     let photoName: String?
+    var ownerEmail: String? = nil
+    var companyID: String? = nil
+    var projectID: String? = nil
+    var uploadedPhotoID: String? = nil
+    var analysisSummary: String? = nil
 }
 
 /// Local drafts only. Never mark a draft uploaded until the server acknowledges it.
@@ -52,6 +57,30 @@ struct FieldEntry: Codable, Identifiable {
     func photoURL(for entry: FieldEntry) -> URL? {
         guard let name = entry.photoName, name == "\(entry.id.uuidString).jpg" else { return nil }
         return directory.appendingPathComponent(name)
+    }
+
+    func bind(_ id: UUID, owner: String, company: String, project: String) throws -> FieldEntry {
+        guard !owner.isEmpty, UUID(uuidString: company) != nil, UUID(uuidString: project) != nil,
+              let entry = entries.first(where: { $0.id == id }),
+              entry.ownerEmail == nil || (entry.ownerEmail == owner && entry.companyID == company && entry.projectID == project) else { throw StoreError.unavailable }
+        return try update(id) { $0.ownerEmail = owner; $0.companyID = company; $0.projectID = project }
+    }
+
+    @discardableResult func markUploaded(_ id: UUID, photoID: String) throws -> FieldEntry {
+        try update(id) { $0.uploadedPhotoID = photoID }
+    }
+
+    @discardableResult func saveAnalysis(_ id: UUID, summary: String) throws -> FieldEntry {
+        try update(id) { $0.analysisSummary = summary }
+    }
+
+    private func update(_ id: UUID, change: (inout FieldEntry) -> Void) throws -> FieldEntry {
+        guard loadError == nil, let position = entries.firstIndex(where: { $0.id == id }) else { throw StoreError.unavailable }
+        var updated = entries
+        change(&updated[position])
+        try JSONEncoder().encode(updated).write(to: index, options: [.atomic, .completeFileProtection])
+        entries = updated
+        return updated[position]
     }
 
     enum StoreError: LocalizedError {

@@ -10,6 +10,7 @@ import UIKit
 
 struct FieldHome: View {
     @StateObject private var store = FieldStore()
+    @StateObject private var client = WorkspaceClient()
     @State private var note = ""
     @State private var photo: Data?
     @State private var selection: PhotosPickerItem?
@@ -22,8 +23,9 @@ struct FieldHome: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Capture the job. Keep the details.").font(.title2.bold())
-                    Text("iPhone preview • Drafts stay on this device. Account sync and AI analysis are not connected yet.")
+                    Text("iPhone preview • Save drafts offline. Sign in to upload photos and request analysis.")
                         .font(.subheadline).foregroundStyle(.secondary)
+                    WorkspacePanel(client: client)
                     Button { camera = true } label: {
                         Label("Take a photo", systemImage: "camera.fill").frame(maxWidth: .infinity).padding(10)
                     }.buttonStyle(.borderedProminent)
@@ -48,9 +50,9 @@ struct FieldHome: View {
                     }.buttonStyle(.borderedProminent).disabled(loading || store.loadError != nil || (note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photo == nil))
                     if let error = store.loadError { Text(error).foregroundStyle(.orange) }
                     Divider()
-                    Text("Saved drafts (\(store.entries.count))").font(.headline)
+                    Text("Saved drafts").font(.headline)
                     if store.entries.isEmpty { Text("Your photos and notes will appear here.").foregroundStyle(.secondary) }
-                    ForEach(store.entries) { entry in
+                    ForEach(store.entries.filter { $0.ownerEmail == nil || ($0.ownerEmail == client.account?.user?.email && $0.companyID == client.account?.company?.id) }) { entry in
                         VStack(alignment: .leading, spacing: 8) {
                             Text(entry.createdAt, style: .date).font(.caption).foregroundStyle(.secondary)
                             Text(entry.note.isEmpty ? "Photo draft" : entry.note)
@@ -58,7 +60,8 @@ struct FieldHome: View {
                                 ShareLink(item: url) { Label("Share saved photo", systemImage: "square.and.arrow.up") }
                             }
                             if !entry.note.isEmpty { ShareLink("Share note", item: entry.note) }
-                            Text("On this device only").font(.caption).foregroundStyle(.secondary)
+                            if entry.uploadedPhotoID == nil { Text("On this device only").font(.caption).foregroundStyle(.secondary) }
+                            DraftWorkspaceActions(entry: entry, store: store, client: client)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding().background(.thinMaterial).clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }.padding()
