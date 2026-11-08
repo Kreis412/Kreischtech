@@ -1,0 +1,47 @@
+name: iPhone prototype build
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/ios-cloud]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ios-prototype-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Select an available iPhone simulator
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available -j > /tmp/ios-devices.json
+          python3 - <<'PY'
+          import json, os
+          with open('/tmp/ios-devices.json') as f:
+              devices = json.load(f)['devices']
+          phones = [d for runtime, group in devices.items() if 'iOS' in runtime for d in group if d.get('isAvailable') and d['name'].startswith('iPhone')]
+          if not phones:
+              raise SystemExit('No available iPhone simulator on this runner')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('SIMULATOR_ID=' + phones[0]['udid'] + '\n')
+          print('Selected ' + phones[0]['name'])
+          PY
+      - name: Build and test without signing
+        run: |
+          set -o pipefail
+          xcodebuild test -project ContractorSight.xcodeproj -scheme ContractorSight -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO
