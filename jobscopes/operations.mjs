@@ -111,7 +111,7 @@ export function operationsStore(db,estimates) {
       }else{
         const worker=get(null,'crew',b.crew_id);
         if(!rows(pid,'assignments').some(a=>a.crew_id===worker.id)||worker.active!=='Active')fail(400,'Choose an active worker assigned to this project.');
-        const minutes=Number(b.minutes);if(!Number.isInteger(minutes)||minutes<1||minutes>1440)fail(400,'Enter 1–1440 whole minutes.');
+        const hours=b.hours===undefined?null:String(b.hours).trim();if(hours!==null&&(!/^\d+(\.\d+)?$/.test(hours)||Number(hours)<=0||Number(hours)>24))fail(400,'Enter hours greater than 0 and no more than 24, such as 1.5.');const minutes=hours===null?Number(b.minutes):Math.round(Number(hours)*60);if(!Number.isInteger(minutes)||minutes<1||minutes>1440)fail(400,'Enter 1–1440 whole minutes.');
         const day=date(b.date,true,true);
         const existing=db.prepare("SELECT data,id FROM operations_records WHERE kind='time'").all().filter(r=>r.id!==id).map(r=>JSON.parse(r.data)).filter(t=>t.crew_id===worker.id&&t.date===day&&t.status!=='Voided').reduce((n,t)=>n+t.minutes,0);
         if(status!=='Voided'&&existing+minutes>1440)fail(400,'This worker would exceed 24 hours across projects for this date.');

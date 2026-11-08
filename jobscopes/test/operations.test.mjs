@@ -48,6 +48,13 @@ test('connected operations: review, crews, approval, costs, isolation and persis
  await a.req(root+'/time/'+entry.id,'PUT',{...entry,minutes:60},400);
  await a.req(`/api/projects/${q.id}/operations/time`,'POST',{crew_id:worker.id,date:'2026-01-01',minutes:1400,status:'Pending',notes:'Too many hours'},400);
  });
+ await t.test('decimal hours preserve labor costs and reject invalid hours',async()=>{
+ const body={crew_id:worker.id,date:'2026-01-02',hours:'1.5',status:'Pending',notes:'Fractional shift'};
+ let saved=await a.req(root+'/time','POST',body,201);assert.equal(saved.minutes,90);
+ saved=await a.req(root+'/time/'+saved.id,'PUT',{...saved,hours:'0.25',status:'Approved'});assert.equal(saved.minutes,15);assert.equal(saved.cost_cents,2250);
+ for(const hours of ['0','-1','25','abc','1/2',''])await a.req(root+'/time','POST',{...body,hours},400);
+ await a.req(root+'/time/'+saved.id,'PUT',{...saved,status:'Voided',void_reason:'Test correction'});
+ });
  await t.test('running costs exclude payroll payments, include refunds, and have no invented budget',async()=>{
  for(const [category,type,amount] of [['Materials','Expense paid','80'],['Materials','Supplier refund','20'],['Labor','Expense paid','100']])await a.req('/api/company/entries','POST',{project_id:p.id,entry_date:'2026-01-01',category,type,amount,description:'Test cost',status:'Recorded'},201);
  const c=(await a.req(root)).cost;assert.equal(c.total_cents,16000);assert.equal(c.excluded_labor_payments_cents,10000);assert.equal(c.baseline,null);
