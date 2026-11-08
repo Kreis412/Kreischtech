@@ -1,6 +1,6 @@
 # ContractorSight iPhone prototype
 
-Started November 7, 2026. Native SwiftUI prototype; not an App Store submission and not yet compiled on macOS. No changes to the live Android deployment.
+Started November 7, 2026. Native SwiftUI prototype; not an App Store submission and compiled and tested on a GitHub-hosted Mac on November 7, 2026. No changes to the live Android deployment.
 
 ## Implemented source
 
@@ -47,6 +47,16 @@ Generated project/plist files are intentionally ignored; project.yml is the sour
 
 ## Costs and next gate
 
-No paid service was provisioned. Mac build/device verification is the next technical gate. Apple Developer Program enrollment is separate and is needed for TestFlight/App Store distribution. Do not advertise this prototype as available for download.
+No paid service was provisioned. The Mac simulator build passed; physical-device verification remains a technical gate. Apple Developer Program enrollment is separate and is needed for TestFlight/App Store distribution. Do not advertise this prototype as available for download.
 
 References: https://developer.apple.com/app-store/review/guidelines/ ; https://developer.apple.com/programs/ ; https://github.com/yonaskolb/XcodeGen
+
+## Cloud build
+
+The `.github/workflows/ios-build.yml` workflow runs on the standard `macos-15` GitHub-hosted runner. It generates this project and runs the simulator XCTest suite without signing. Pushes changing iOS files on `build/ios-cloud` trigger it. Maximum duration is 20 minutes; newer builds cancel older builds on the same branch. It has read-only repository permissions, no secrets, no artifact uploads and no caches. Standard runner compute is free for this public repository under current GitHub rules. Recheck billing before using a private repository or larger runner.
+
+Build history: https://github.com/Kreis412/Kreischtech/actions/workflows/ios-build.yml
+
+This does not produce an installable iPhone IPA or upload to TestFlight. Those require Apple enrollment and signing setup.
+
+Verified first cloud run: https://github.com/Kreis412/Kreischtech/actions/runs/42428374936 — build succeeded, three XCTest cases passed, zero failures. This validates compilation and local storage behavior, not camera hardware, billing, or backend integration.
