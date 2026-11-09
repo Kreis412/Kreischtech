@@ -21,3 +21,9 @@ test('authorized limit increase preserves prior usage across restart',async()=>{
   c=cloudAdapter({...options,maxAttempts:22});assert.equal(c.status().remaining_attempts,20);
  }finally{c.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('text scan analysis sends text without image preparation',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'text-scan-'));let prepared=false;
+ const c=cloudAdapter({dataDir:dir,unlock:async()=> 'fake',prepare:async()=>{prepared=true;throw Error('unexpected');},request:async(url,o)=>{const b=JSON.parse(o.body);assert.deepEqual(b.input[0].content.map(x=>x.type),['input_text']);assert.match(b.input[0].content[0].text,/P0300/);return {ok:true,json:async()=>({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{"summary":"test","findings":[]}'}]}]})};}});
+ try{await c.analyze(null,'P0300','scan',{});assert.equal(prepared,false);}finally{c.close();rmSync(dir,{recursive:true,force:true});}
+});

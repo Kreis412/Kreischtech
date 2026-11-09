@@ -33,3 +33,22 @@ test('asset photos persist, enforce roles and asset ownership, require consent, 
   const saved=(await call('GET','one/photos')).value.photos[0];assert.equal(saved.analysis.context,'Check wheel');assert.equal(saved.analysis.findings.length,1);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('scan imports isolate asset history, require consent and charge once after save',async()=>{
+ const db=new DatabaseSync(':memory:');equipmentStore(db);for(const id of ['truck','other'])db.prepare('INSERT INTO equipment VALUES(?,?,?,1)').run(id,id,'{}');
+ let calls=0,charged=0,failNext=true;
+ const store=equipmentPhotos(db,{scan:true,body:async r=>r.bytes,imageType:()=> 'image/png',cloud:{status:()=>({}),runSaved:async(kind,key,op)=>{assert.equal(kind,'analysis');const result=await op();charged++;return result;},analyze:async(image,context,prompt)=>{calls++;assert.match(prompt,/OBD-II/);if(failNext){failNext=false;throw Error('provider unavailable');}if(image===null)assert.match(context,/P0300/);return {summary:'Check misfire causes',findings:[]};}}});
+ const call=async(method,path,b={},role='Owner',mime='text/plain',bytes=Buffer.from('P0300'))=>{let result;await store.handle({method,headers:{'content-type':mime},bytes,jobscopesActor:{role,name:'Tester'}},new URL('http://local/api/equipment/'+path),async()=>b,(status,value)=>result={status,value});return result;};
+ try{
+  await assert.rejects(call('POST','truck/scans',{},'Viewer'),e=>e.status===403);
+  await assert.rejects(call('POST','truck/scans',{},'Owner','text/plain',Buffer.from(' ')),e=>e.status===400);
+  const {value:{id}}=await call('POST','truck/scans');
+  await assert.rejects(call('GET','other/scans/'+id),e=>e.status===404);
+  await assert.rejects(call('POST','truck/scans/'+id+'/analysis',{context:''}),e=>e.status===400);assert.equal(calls,0);
+  const consent={context:'2015 Silverado, rough idle',cloud_consent:true};
+  await assert.rejects(call('POST','truck/scans/'+id+'/analysis',consent));assert.equal(charged,0);assert.equal((await call('GET','truck/scans')).value.photos[0].analysis,null);
+  await call('POST','truck/scans/'+id+'/analysis',consent);await call('POST','truck/scans/'+id+'/analysis',consent);assert.equal(charged,1);assert.equal(calls,2);
+  const screenshot=await call('POST','truck/scans',{},'Owner','image/png',Buffer.from('screenshot'));await call('POST','truck/scans/'+screenshot.value.id+'/analysis',consent);assert.equal(charged,2);
+  assert.equal(db.prepare('SELECT count(*) n FROM equipment_scans').get().n,2);
+ }finally{db.close();}
+});
