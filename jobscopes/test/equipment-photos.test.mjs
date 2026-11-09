@@ -52,3 +52,16 @@ test('scan imports isolate asset history, require consent and charge once after 
   assert.equal(db.prepare('SELECT count(*) n FROM equipment_scans').get().n,2);
  }finally{db.close();}
 });
+
+test('scan bundles keep ordered frames private, scoped and charge once per bundle',async()=>{
+ const db=new DatabaseSync(':memory:');equipmentStore(db);for(const id of ['truck','other'])db.prepare('INSERT INTO equipment VALUES(?,?,?,1)').run(id,id,'{}');let calls=0;
+ const store=equipmentPhotos(db,{scan:true,body:async r=>r.bytes,imageType:bytes=>{if(bytes.toString()!=='image')throw Object.assign(Error('bad image'),{status:415});return 'image/png';},cloud:{status:()=>({}),analyze:async(images,context)=>{calls++;assert.equal(images.length,2);assert.match(context,/Video 1/);return {summary:'Sampled data',findings:[]};}}});
+ const mime='application/vnd.contractorsight.scan+json',bundle={source:'video',frames:[{data:Buffer.from('image').toString('base64'),label:'Video 0 seconds'},{data:Buffer.from('image').toString('base64'),label:'Video 1 seconds'}]};
+ async function call(method,path,b={},upload=bundle){let result;await store.handle({method,headers:{'content-type':mime},bytes:Buffer.from(JSON.stringify(upload)),jobscopesActor:{role:'Owner',name:'Test'}},new URL('http://local/api/equipment/'+path),async()=>b,(status,value)=>result={status,value});return result;}
+ try{
+  await assert.rejects(call('POST','truck/scans',{}, {...bundle,frames:Array(7).fill(bundle.frames[0])}),e=>e.status===400);
+  const {value:{id}}=await call('POST','truck/scans');const list=(await call('GET','truck/scans')).value.photos[0];assert.equal(list.frames.length,2);assert.equal(list.frames[0].data,undefined);assert.equal(list.bundle_content,undefined);
+  assert.equal((await call('GET','truck/scans/'+id+'?frame=1')).value.toString(),'image');await assert.rejects(call('GET','other/scans/'+id+'?frame=0'),e=>e.status===404);await assert.rejects(call('GET','truck/scans/'+id+'?frame=9'),e=>e.status===400);
+  await call('POST','truck/scans/'+id+'/analysis',{context:'Silverado',cloud_consent:true});await call('POST','truck/scans/'+id+'/analysis',{});assert.equal(calls,1);
+ }finally{db.close();}
+});

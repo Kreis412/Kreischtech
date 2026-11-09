@@ -27,3 +27,9 @@ test('text scan analysis sends text without image preparation',async()=>{
  const c=cloudAdapter({dataDir:dir,unlock:async()=> 'fake',prepare:async()=>{prepared=true;throw Error('unexpected');},request:async(url,o)=>{const b=JSON.parse(o.body);assert.deepEqual(b.input[0].content.map(x=>x.type),['input_text']);assert.match(b.input[0].content[0].text,/P0300/);return {ok:true,json:async()=>({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{"summary":"test","findings":[]}'}]}]})};}});
  try{await c.analyze(null,'P0300','scan',{});assert.equal(prepared,false);}finally{c.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('multiple scan frames are separate images in one provider request',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'scan-frames-'));let calls=0;
+ const c=cloudAdapter({dataDir:dir,unlock:async()=> 'fake',prepare:async b=>b.toString('base64'),request:async(url,o)=>{calls++;const b=JSON.parse(o.body);assert.equal(b.input[0].content.filter(x=>x.type==='input_image').length,2);return {ok:true,json:async()=>({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{"summary":"test","findings":[]}'}]}]})};}});
+ try{await c.analyze([Buffer.from('a'),Buffer.from('b')],'frames','scan',{});assert.equal(calls,1);await assert.rejects(c.analyze(Array(7).fill(Buffer.from('a')),'','',{}),e=>e.status===400);assert.equal(calls,1);}finally{c.close();rmSync(dir,{recursive:true,force:true});}
+});

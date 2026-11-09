@@ -7,6 +7,6 @@ test('fleet scan button opens imports and consent form with vehicle context',asy
  const asset={id:'truck',name:'Silverado',make_model:'Chevrolet Silverado',history:[],reading:null,service_meter:null};
  const ui=equipmentUI({api:async path=>path.endsWith('/scans')?{photos:[{id:'scan',mime:'image/png',created_at:new Date().toISOString()}]}:path==='/api/projects'?[]:{assets:[asset],canEdit:true},write:async()=>{},esc:v=>String(v??'').replaceAll('<','&lt;').replaceAll('"','&quot;'),field:(label,name,value)=>`<label>${label}<input name="${name}" value="${value}"></label>`,selectField:()=>'',openForm:(...args)=>{form=args;},toast:message=>{throw Error(message);}});
  await ui.mount(host);host.querySelector('[data-eq=scans]').click();await new Promise(resolve=>setTimeout(resolve,0));
- assert.match(host.textContent,/Import report or screenshot/);assert.match(host.querySelector('#scan-file').accept,/\.csv/);
+ assert.match(host.textContent,/Import reports, screenshots or video/);assert.match(host.querySelector('#scan-file').accept,/video\/mp4/);assert.equal(host.querySelector('#scan-file').multiple,true);
  host.querySelector('[data-scan-analyze]').click();assert.match(form[2],/Chevrolet Silverado/);assert.match(form[2],/name="consent" required/);dom.window.close();
 });
