@@ -28,11 +28,11 @@ export function stripePlanChanges({db,stripe,prices,live,now,memberCount,externa
   if(memberCount(session.company_id)>plan.seats)fail(409,`Remove extra company members before switching to ${plan.name} (${plan.seats} user${plan.seats===1?'':'s'}).`);
   const sub=await checkedSub(row);if(sub.schedule)fail(409,'This subscription already has a schedule. Contact support to change it.');
   const price=await external(()=>stripe.prices.retrieve(prices[key]));
-  if(!price||price.livemode!==live||!price.active||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.type!=='recurring'||price.billing_scheme!=='per_unit'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1)fail(503,'The new plan price is not configured correctly.');
+  if(!price||price.livemode!==live||!price.active||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.type!=='recurring'||price.billing_scheme!=='per_unit'||price.recurring?.interval!==plan.interval||price.recurring?.interval_count!==1)fail(503,'The new plan price is not configured correctly.');
   if(row.period_end<now()+60000)fail(409,'Your renewal is processing. Check payment status shortly and try again.');
   const quote={id:randomUUID(),company:session.company_id,user_id:session.user_id,subscription:row.id,from_plan:row.plan,to_plan:key,effective:row.period_end,created:now()};
   db.prepare("INSERT INTO plan_changes VALUES(?,?,?,?,?,?,?,?, 'quoted',NULL)").run(quote.id,quote.company,quote.user_id,quote.subscription,quote.from_plan,key,quote.effective,quote.created);
-  return {quote_id:quote.id,plan:plan.name,price_cents:plan.price_cents,effective_at:quote.effective,currency:'USD'};
+  return {quote_id:quote.id,plan:plan.name,interval:plan.interval,price_cents:plan.price_cents,effective_at:quote.effective,currency:'USD'};
  }
  async function confirm(session,quoteId){
   owner(session);
@@ -46,7 +46,7 @@ export function stripePlanChanges({db,stripe,prices,live,now,memberCount,externa
   if(row.id!==q.subscription||row.plan!==q.from_plan||row.period_end!==q.effective||memberCount(q.company)>plan.seats)fail(409,'Your company or subscription changed. Choose the plan again.');
   const sub=await checkedSub(row);
   const price=await external(()=>stripe.prices.retrieve(prices[q.to_plan]));
-  if(!price?.active||price.livemode!==live||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.billing_scheme!=='per_unit'||price.type!=='recurring'||price.recurring?.interval!=='month'||price.recurring?.interval_count!==1)fail(409,'The plan price changed. Contact support before continuing.');
+  if(!price?.active||price.livemode!==live||price.currency!=='usd'||price.unit_amount!==plan.price_cents||price.billing_scheme!=='per_unit'||price.type!=='recurring'||price.recurring?.interval!==plan.interval||price.recurring?.interval_count!==1)fail(409,'The plan price changed. Contact support before continuing.');
   if(sub.schedule&&id(sub.schedule)!==q.schedule&&q.state!=='creating')fail(409,'Another subscription schedule already exists.');
   db.prepare("UPDATE plan_changes SET state='creating' WHERE id=?").run(q.id);
   // Persist the request identity BEFORE contacting Stripe: a lost response can be retried.
@@ -55,7 +55,7 @@ export function stripePlanChanges({db,stripe,prices,live,now,memberCount,externa
   db.prepare('UPDATE plan_changes SET schedule=? WHERE id=?').run(schedule.id,q.id);
   await external(()=>stripe.subscriptionSchedules.update(schedule.id,{end_behavior:'release',proration_behavior:'none',phases:[
    {start_date:schedule.current_phase.start_date,end_date:q.effective/1000,items:[{price:prices[q.from_plan],quantity:1}],proration_behavior:'none'},
-   {start_date:q.effective/1000,duration:{interval:'month',interval_count:1},items:[{price:prices[q.to_plan],quantity:1}],proration_behavior:'none'}
+   {start_date:q.effective/1000,duration:{interval:plan.interval,interval_count:1},items:[{price:prices[q.to_plan],quantity:1}],proration_behavior:'none'}
   ]},{idempotencyKey:'cs-plan-update:'+q.id}));
   db.prepare("UPDATE plan_changes SET state='scheduled' WHERE id=?").run(q.id);
   return {scheduled:true,effective_at:q.effective};

@@ -12,9 +12,9 @@ import {createProduct} from '../server.mjs';
 const key='sk_test_fake_for_unit_tests',secret='whsec_fake_for_unit_tests';
 const owner={user_id:'userA',company_id:'companyA',role:'Owner'},other={company_id:'companyB',role:'Owner'};
 function fixture(t,live=false){
- const prices=live?{solo:'price_live_solo',pro:'price_live_pro',team:'price_live_team',analysis_1:'price_live_analysis_1',analysis_5:'price_live_analysis_5',analysis_12:'price_live_analysis_12'}:TEST_PRICES;
+ const prices=live?{solo:'price_live_solo',pro:'price_live_pro',team:'price_live_team',solo_annual:'price_live_solo_annual',pro_annual:'price_live_pro_annual',team_annual:'price_live_team_annual',analysis_1:'price_live_analysis_1',analysis_5:'price_live_analysis_5',analysis_12:'price_live_analysis_12'}:TEST_PRICES;
  const dir=mkdtempSync(join(tmpdir(),'cs-stripe-')),sdk=new Stripe(key),sessions=new Map(),subs=new Map(),invoices=new Map();let creates=0,wrongPrice=false;
- const client={webhooks:sdk.webhooks,prices:{retrieve:async price=>{const plan=Object.keys(prices).find(k=>prices[k]===price);return {id:price,livemode:live,active:true,currency:'usd',billing_scheme:'per_unit',unit_amount:wrongPrice?1:{solo:1900,pro:3900,team:7900,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan],type:(plan==='pack'||plan.startsWith('analysis_'))?'one_time':'recurring',recurring:(plan==='pack'||plan.startsWith('analysis_'))?null:{interval:'month',interval_count:1}};}},
+ const client={webhooks:sdk.webhooks,prices:{retrieve:async price=>{const plan=Object.keys(prices).find(k=>prices[k]===price);return {id:price,livemode:live,active:true,currency:'usd',billing_scheme:'per_unit',unit_amount:wrongPrice?1:{solo:1900,pro:3900,team:7900,solo_annual:19000,pro_annual:39000,team_annual:79000,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan],type:(plan==='pack'||plan.startsWith('analysis_'))?'one_time':'recurring',recurring:(plan==='pack'||plan.startsWith('analysis_'))?null:{interval:plan.endsWith('_annual')?'year':'month',interval_count:1}};}},
   checkout:{sessions:{create:async params=>{creates++;const sid=(live?'cs_live_':'cs_test_')+creates;const value={id:sid,livemode:live,status:'open',url:'https://checkout.stripe.com/c/pay/'+sid,created:Math.floor(Date.now()/1000),...params,line_items:{data:[{price:{id:params.line_items[0].price},quantity:1}],has_more:false}};sessions.set(sid,value);return value;},retrieve:async sid=>structuredClone(sessions.get(sid))}},
   subscriptions:{retrieve:async sid=>structuredClone(subs.get(sid)),update:async(sid,params)=>Object.assign(subs.get(sid),params)},invoices:{retrieve:async iid=>structuredClone(invoices.get(iid))}};
  const charges=new Map(),intents=new Map(),disputes=new Map();
@@ -24,7 +24,7 @@ function fixture(t,live=false){
  client.invoicePayments={list:async({invoice})=>{const inv=invoices.get(invoice),pid=inv.payment_intent;return {has_more:false,data:[{invoice,livemode:live,status:'paid',currency:'usd',amount_paid:inv.amount_paid,payment:{type:'payment_intent',payment_intent:pid}}]};}};
  const options={dataDir:dir,origin:'https://example.test',secretKey:live?'sk_live_fake_for_unit_tests':key,mode:live?'live':'test',prices,webhookSecret:secret,enabled:true,client};let billing=stripeBilling(options);
  t.after(()=>{billing.close();rmSync(dir,{recursive:true,force:true});});
- function pay(sid,plan){const s=sessions.get(sid);Object.assign(s,{status:'complete',payment_status:'paid',currency:'usd',amount_total:{solo:1900,pro:3900,team:7900,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan]});if((plan!=='pack'&&!plan.startsWith('analysis_'))){
+ function pay(sid,plan){const s=sessions.get(sid);Object.assign(s,{status:'complete',payment_status:'paid',currency:'usd',amount_total:{solo:1900,pro:3900,team:7900,solo_annual:19000,pro_annual:39000,team_annual:79000,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan]});if((plan!=='pack'&&!plan.startsWith('analysis_'))){
   s.subscription='sub_'+sid;s.invoice='in_'+sid;const end=Math.floor(Date.now()/1000)+30*86400;
   subs.set(s.subscription,{id:s.subscription,livemode:live,metadata:s.metadata,status:'active',items:{data:[{price:{id:prices[plan]},quantity:1,current_period_end:end}]},cancel_at_period_end:false});
   invoices.set(s.invoice,{id:s.invoice,livemode:live,status:'paid',currency:'usd',amount_paid:s.amount_total,billing_reason:'subscription_create',parent:{subscription_details:{subscription:s.subscription}},lines:{has_more:false,data:[{pricing:{price_details:{price:prices[plan]}},quantity:1,period:{end}}]}});
@@ -42,9 +42,9 @@ test('live Solo grants separate saved-result allowances, refunds both and reject
  await assert.rejects(f.billing.checkout(owner,'solo'),{status:400});
  await assert.rejects(f.billing.checkout(owner,'solo','old-version'),{status:400});
  assert.equal(f.creates,0);
- await assert.rejects(f.billing.checkout(owner,'crew','2026-10-01'),{status:409});
- await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_live_1','solo');
- const audit=new DatabaseSync(join(f.dir,'stripe-live','checkout.sqlite'));const accepted=audit.prepare('SELECT * FROM billing_consents').get();audit.close();assert.equal(accepted.user_id,owner.user_id);assert.equal(accepted.version,'2026-10-01');assert.equal(accepted.company,owner.company_id);
+ await assert.rejects(f.billing.checkout(owner,'crew','2026-11-09'),{status:409});
+ await f.billing.checkout(owner,'solo','2026-11-09');const s=f.pay('cs_live_1','solo');
+ const audit=new DatabaseSync(join(f.dir,'stripe-live','checkout.sqlite'));const accepted=audit.prepare('SELECT * FROM billing_consents').get();audit.close();assert.equal(accepted.user_id,owner.user_id);assert.equal(accepted.version,'2026-11-09');assert.equal(accepted.company,owner.company_id);
  await f.billing.confirm(owner,s.id);
  assert.equal(f.billing.status(owner).mode,'stripe-live');
  assert.equal(f.billing.balance('companyA'),25);assert.equal(f.billing.balance('companyA','joe'),25);
@@ -63,16 +63,16 @@ test('test checkout enforces owner, server prices, deduplication and company bin
  const f=fixture(t);
  await assert.rejects(f.billing.checkout({...owner,role:'Manager'},'solo'),{status:403});
  await assert.rejects(f.billing.checkout(owner,'invented'),{status:400});
- const first=await f.billing.checkout(owner,'solo','2026-10-01');assert.match(first.url,/checkout.stripe.com/);
- await f.billing.checkout(owner,'solo','2026-10-01');assert.equal(f.creates,1);
- await assert.rejects(f.billing.checkout(owner,'crew','2026-10-01'),{status:409});
+ const first=await f.billing.checkout(owner,'solo','2026-11-09');assert.match(first.url,/checkout.stripe.com/);
+ await f.billing.checkout(owner,'solo','2026-11-09');assert.equal(f.creates,1);
+ await assert.rejects(f.billing.checkout(owner,'crew','2026-11-09'),{status:409});
  await assert.rejects(f.billing.confirm(other,'cs_test_1'),{status:404});
  assert.equal((await f.billing.confirm(owner,'cs_test_1')).confirmed,false);
  assert.equal(f.billing.status(owner).test_balance,0);
  f.pay('cs_test_1','solo');await f.billing.confirm(owner,'cs_test_1');
  assert.equal(f.billing.status(owner).test_balance,25);assert.equal(f.billing.status(other).test_balance,0);
  await f.billing.confirm(owner,'cs_test_1');assert.equal(f.billing.status(owner).test_balance,25);
- await assert.rejects(f.billing.checkout(owner,'crew','2026-10-01'),{status:409});
+ await assert.rejects(f.billing.checkout(owner,'crew','2026-11-09'),{status:409});
  f.restart();assert.equal(f.billing.status(owner).test_balance,25);
 });
 
@@ -86,7 +86,7 @@ test('hosted paid account uses Joe credits, keeps saved replies free and blocks 
  const a=user(),b=user();
  for(const [u,email] of [[a,'a@example.test'],[b,'b@example.test']])assert.equal((await u.send('/api/account/register',{email,password:'long test password 2026',name:'Owner',company:email,registration_code:'invite-for-test'})).status,201);
  const invite=await a.send('/api/account/invites',{email:'b@example.test',role:'Manager'});assert.equal(invite.status,201);
- assert.equal((await a.send('/api/billing/checkout',{plan:'solo',terms_version:'2026-10-01'})).status,200);f.pay('cs_live_1','solo');
+ assert.equal((await a.send('/api/billing/checkout',{plan:'solo',terms_version:'2026-11-09'})).status,200);f.pay('cs_live_1','solo');
  assert.equal((await a.send('/api/billing/confirm',{session_id:'cs_live_1'})).status,200);
  assert.equal((await b.send('/api/account/join',{code:invite.body.code})).status,409);
  assert.equal((await a.send('/api/account/invites',{email:'c@example.test',role:'Viewer'})).status,409);
@@ -102,11 +102,11 @@ test('hosted paid account uses Joe credits, keeps saved replies free and blocks 
 test('definitive Stripe validation failure permits a fresh attempt but uncertain failures preserve identity',async t=>{
  const f=fixture(t),create=f.client.checkout.sessions.create,keys=[];
  f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);throw {type:'StripeInvalidRequestError',statusCode:400};};
- await assert.rejects(f.billing.checkout(owner,'solo','2026-10-01'),/Please try checkout again/);
+ await assert.rejects(f.billing.checkout(owner,'solo','2026-11-09'),/Please try checkout again/);
  f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);throw {type:'StripeConnectionError'};};
- await assert.rejects(f.billing.checkout(owner,'solo','2026-10-01'),/No automatic retry/);
+ await assert.rejects(f.billing.checkout(owner,'solo','2026-11-09'),/No automatic retry/);
  f.client.checkout.sessions.create=async(params,options)=>{keys.push(options.idempotencyKey);return create(params);};
- await f.billing.checkout(owner,'solo','2026-10-01');
+ await f.billing.checkout(owner,'solo','2026-11-09');
  assert.notEqual(keys[0],keys[1]);assert.equal(keys[1],keys[2]);assert.equal(f.creates,1);
 });
 
@@ -119,7 +119,7 @@ test('pack test fulfillment is idempotent and malformed or unpaid prices never g
  f.wrongPrice();await assert.rejects(f.billing.checkout(other,'crew'),{status:503});
 });
 test('verified paid renewals add once, failures add nothing and cancellation retains pilot data',async t=>{
- const f=fixture(t);await f.billing.checkout(owner,'crew','2026-10-01');const s=f.pay('cs_test_1','crew');
+ const f=fixture(t);await f.billing.checkout(owner,'crew','2026-11-09');const s=f.pay('cs_test_1','crew');
  // Invoice may arrive before checkout completion.
  await f.event('invoice.paid',{id:s.invoice});await f.billing.confirm(owner,s.id);assert.equal(f.billing.status(owner).test_balance,60);
  const renewal=structuredClone(f.invoices.get(s.invoice));renewal.id='in_renewal';renewal.billing_reason='subscription_cycle';renewal.lines.data[0].period.end+=30*86400;
@@ -146,7 +146,7 @@ test('webhooks reject tampering, stale signatures, live events and unconfigured 
 });
 
 test('refund and dispute deliveries reconcile current payment state without granting twice',async t=>{
- const f=fixture(t);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_test_1','solo'),charge=f.charges.get('ch_'+s.id);
+ const f=fixture(t);await f.billing.checkout(owner,'solo','2026-11-09');const s=f.pay('cs_test_1','solo'),charge=f.charges.get('ch_'+s.id);
  // Refund event precedes the first invoice delivery: fulfillment must still see it.
  charge.amount_refunded=950;await f.event('charge.refunded',{id:charge.id});
  await f.billing.confirm(owner,s.id);assert.equal(f.billing.status(owner).test_balance,12);
@@ -161,7 +161,7 @@ test('refund and dispute deliveries reconcile current payment state without gran
 });
 
 test('one charge cannot buy two invoice grants and refund events cover packs',async t=>{
- const f=fixture(t);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_test_1','solo');await f.billing.confirm(owner,s.id);
+ const f=fixture(t);await f.billing.checkout(owner,'solo','2026-11-09');const s=f.pay('cs_test_1','solo');await f.billing.confirm(owner,s.id);
  const duplicate={...f.invoices.get(s.invoice),id:'in_reused_payment'};f.invoices.set(duplicate.id,duplicate);
  await assert.rejects(f.event('invoice.paid',{id:duplicate.id}),{status:409});assert.equal(f.billing.status(owner).test_balance,25);
  await f.billing.checkout(other,'pack');const pack=f.pay('cs_test_2','pack');await f.billing.confirm(other,pack.id);assert.equal(f.billing.status(other).test_balance,10);
@@ -186,7 +186,7 @@ test('gateway accepts signed machine callback without browser origin but keeps b
 test('all live packs grant only purchased analyses once, persist, and refund unused credits',async t=>{
  const f=fixture(t,true);
  for(const [index,pack,count] of [[1,'analysis_1',1],[2,'analysis_5',5],[3,'analysis_12',12]]){
-  await f.billing.checkout(owner,pack,'2026-10-01');
+  await f.billing.checkout(owner,pack,'2026-11-09');
   const s=f.pay('cs_live_'+index,pack);assert.equal(s.mode,'payment');
   await f.billing.confirm(owner,s.id);await f.event('checkout.session.completed',{id:s.id});
  }
@@ -201,7 +201,7 @@ test('all live packs grant only purchased analyses once, persist, and refund unu
 });
 
 for(const [plan,analyses,joe,seats,cost] of [['pro',75,100,1,3900],['team',150,250,5,7900]])test(`live ${plan} delivers distinct allowances and paid seats; refund revokes both`,async t=>{
- const f=fixture(t,true);await f.billing.checkout(owner,plan,'2026-10-01');assert.equal(f.billing.seatLimit(owner.company_id),1);
+ const f=fixture(t,true);await f.billing.checkout(owner,plan,'2026-11-09');assert.equal(f.billing.seatLimit(owner.company_id),1);
  const s=f.pay('cs_live_1',plan);await f.billing.confirm(owner,s.id);
  assert.equal(f.billing.balance(owner.company_id),analyses);assert.equal(f.billing.balance(owner.company_id,'joe'),joe);assert.equal(f.billing.seatLimit(owner.company_id),seats);
  await f.billing.confirm(owner,s.id);assert.equal(f.billing.balance(owner.company_id,'joe'),joe);
@@ -212,23 +212,23 @@ for(const [plan,analyses,joe,seats,cost] of [['pro',75,100,1,3900],['team',150,2
 test('unconfigured tiers and oversized teams cannot start checkout',async t=>{
  const f=fixture(t,true);delete f.options.prices.pro;f.options.memberCount=()=>6;f.restart();
  assert.equal(f.billing.status(owner).plans.find(p=>p.id==='pro').purchase_enabled,false);
- await assert.rejects(f.billing.checkout(owner,'pro','2026-10-01'),{status:503});
- await assert.rejects(f.billing.checkout(owner,'team','2026-10-01'),{status:409});assert.equal(f.creates,0);
+ await assert.rejects(f.billing.checkout(owner,'pro','2026-11-09'),{status:503});
+ await assert.rejects(f.billing.checkout(owner,'team','2026-11-09'),{status:409});assert.equal(f.creates,0);
 });
 
-function schedules(f){
+function schedules(f,target='team'){
  const saved=new Map(),requests=new Map();let updates=0,failUpdate=false;
  f.client.subscriptionSchedules={
   create:async(p,o)=>{if(requests.has(o.idempotencyKey))return structuredClone(requests.get(o.idempotencyKey));const sub=f.subs.get(p.from_subscription),end=sub.items.data[0].current_period_end;const s={id:'sub_sched_'+saved.size,livemode:true,subscription:sub.id,current_phase:{start_date:end-30*86400,end_date:end}};saved.set(s.id,s);requests.set(o.idempotencyKey,s);sub.schedule=s.id;return structuredClone(s);},
   retrieve:async id=>structuredClone(saved.get(id)),
-  update:async(id,p)=>{updates++;assert.equal(p.proration_behavior,'none');assert.equal(p.phases[0].items[0].price,f.options.prices.solo);assert.equal(p.phases[1].items[0].price,f.options.prices.team);Object.assign(saved.get(id),p);if(failUpdate)throw Error('Lost response');return structuredClone(saved.get(id));},
+  update:async(id,p)=>{updates++;assert.equal(p.proration_behavior,'none');assert.equal(p.phases[0].items[0].price,f.options.prices.solo);assert.equal(p.phases[1].items[0].price,f.options.prices[target]);Object.assign(saved.get(id),p);if(failUpdate)throw Error('Lost response');return structuredClone(saved.get(id));},
   release:async id=>{saved.get(id).status='released';f.subs.get(saved.get(id).subscription).schedule=null;return saved.get(id);}
  };
  return {saved,get updates(){return updates;},fail:v=>failUpdate=v};
 }
 
 test('Stripe plan change requires confirmation, survives retry, and grants new allowances only on paid renewal',async t=>{
- const f=fixture(t,true),mock=schedules(f);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
+ const f=fixture(t,true),mock=schedules(f);await f.billing.checkout(owner,'solo','2026-11-09');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
  await f.billing.runSaved(owner.company_id)('analysis','used',async()=>true);
  const q=await f.billing.previewChange(owner,'team');assert.equal(q.price_cents,7900);assert.equal(mock.saved.size,0);assert.equal(f.billing.balance(owner.company_id),24);
  await assert.rejects(f.billing.confirmChange({...owner,company_id:other.company_id},q.quote_id),{status:404});
@@ -248,10 +248,30 @@ test('Stripe plan change requires confirmation, survives retry, and grants new a
 });
 
 test('Stripe canceled change preserves subscription; stale, foreign and wrong-price confirmations are blocked',async t=>{
- const f=fixture(t,true),mock=schedules(f);await f.billing.checkout(owner,'solo','2026-10-01');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
+ const f=fixture(t,true),mock=schedules(f);await f.billing.checkout(owner,'solo','2026-11-09');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
  await assert.rejects(f.billing.previewChange({...owner,role:'Manager'},'team'),{status:403});
  const q=await f.billing.previewChange(owner,'team');await f.billing.confirmChange(owner,q.quote_id);await f.billing.cancelChange(owner);
  assert.equal(f.billing.status(owner).scheduled_change,null);assert.equal(f.billing.balance(owner.company_id),25);assert.equal(f.subs.get(s.subscription).status,'active');assert.equal([...mock.saved.values()][0].status,'released');
  await assert.rejects(f.billing.confirmChange(owner,q.quote_id),{status:409});
  const next=await f.billing.previewChange(owner,'team');f.wrongPrice();await assert.rejects(f.billing.confirmChange(owner,next.quote_id),{status:409});assert.equal(mock.saved.size,1);
+});
+
+ test('annual Stripe grants monthly windows, survives restore, and revokes future allowances on refund',async t=>{
+ const f=fixture(t,true);let clock=Date.parse('2028-01-31T12:00:00Z');f.options.now=()=>clock;f.restart();
+ await f.billing.checkout(owner,'team_annual','2026-11-09');const s=f.pay('cs_live_1','team_annual');
+ const end=Date.parse('2029-01-31T12:00:00Z');f.subs.get(s.subscription).items.data[0].current_period_end=end/1000;
+ f.invoices.get(s.invoice).lines.data[0].period={start:clock/1000,end:end/1000};
+ await f.billing.confirm(owner,s.id);assert.equal(f.billing.balance('companyA'),150);assert.equal(f.billing.balance('companyA','joe'),250);assert.equal(f.billing.seatLimit('companyA'),5);
+ await f.billing.runSaved('companyA')('analysis','a',async()=>true);assert.equal(f.billing.balance('companyA'),149);
+ clock=Date.parse('2028-02-29T12:00:00Z');f.restart();assert.equal(f.billing.balance('companyA'),150);assert.equal(f.billing.seatLimit('companyA'),5);
+ await f.billing.runSaved('companyA')('analysis','b',async()=>true);await f.billing.confirm(owner,s.id);assert.equal(f.billing.balance('companyA'),149);
+ await f.billing.cancel(owner);assert.equal(f.billing.balance('companyA'),149);
+ f.charges.get('ch_'+s.id).amount_refunded=79000;await f.event('charge.refunded',{id:'ch_'+s.id});assert.equal(f.billing.balance('companyA'),0);assert.equal(f.billing.seatLimit('companyA'),1);
+ clock=Date.parse('2028-05-31T12:00:00Z');assert.equal(f.billing.balance('companyA'),0);assert.equal(f.billing.balance('companyA','joe'),0);
+ });
+
+test('monthly to yearly Stripe change schedules one annual phase without a second checkout',async t=>{
+ const f=fixture(t,true),mock=schedules(f,'solo_annual');await f.billing.checkout(owner,'solo','2026-11-09');const s=f.pay('cs_live_1','solo');await f.billing.confirm(owner,s.id);
+ const q=await f.billing.previewChange(owner,'solo_annual');assert.equal(q.interval,'year');assert.equal(q.price_cents,19000);await f.billing.confirmChange(owner,q.quote_id);
+ assert.equal(f.creates,1);assert.equal(f.billing.balance(owner.company_id),25);const schedule=[...mock.saved.values()][0];assert.equal(schedule.phases[1].duration.interval,'year');assert.equal(schedule.phases[1].items[0].price,f.options.prices.solo_annual);
 });

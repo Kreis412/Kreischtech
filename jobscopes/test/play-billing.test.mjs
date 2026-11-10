@@ -41,11 +41,11 @@ test('lost consume response retries safely and refund removes only its own remai
 
 function subscriptionFixture(t){
  const dataDir=mkdtempSync(join(tmpdir(),'cs-play-sub-'));let time=Date.now(),acks=0,failAck=false;
- const purchases=new Map(),products={solo:'contractorsight_solo',pro:'contractorsight_pro',team:'contractorsight_team'};
+ const purchases=new Map(),products={solo:'contractorsight_solo',pro:'contractorsight_pro',team:'contractorsight_team',team_annual:'contractorsight_team_annual'};
  const client={subscription:async token=>structuredClone(purchases.get(token)),acknowledge:async()=>{acks++;if(failAck)throw Error('offline');}};
  const options={dataDir,client,enabled:true,products,now:()=>time};let service=playBilling(options);
  t.after(()=>{service.close();rmSync(dataDir,{force:true,recursive:true});});
- return {get service(){return service;},purchases,options,get acks(){return acks;},failAck:v=>failAck=v,advance:ms=>time+=ms,restart(){service.close();service=playBilling(options);},add(token,plan='team',extra={}){purchases.set(token,{subscriptionState:'SUBSCRIPTION_STATE_ACTIVE',acknowledgementState:'ACKNOWLEDGEMENT_STATE_PENDING',lineItems:[{productId:products[plan],offerDetails:{basePlanId:'monthly'},expiryTime:new Date(time+30*86400000).toISOString(),latestSuccessfulOrderId:'order-'+token}],...extra});}};
+ return {get service(){return service;},purchases,options,get time(){return time;},get acks(){return acks;},failAck:v=>failAck=v,advance:ms=>time+=ms,restart(){service.close();service=playBilling(options);},add(token,plan='team',extra={}){purchases.set(token,{subscriptionState:'SUBSCRIPTION_STATE_ACTIVE',acknowledgementState:'ACKNOWLEDGEMENT_STATE_PENDING',lineItems:[{productId:products[plan],offerDetails:{basePlanId:'monthly'},expiryTime:new Date(time+30*86400000).toISOString(),latestSuccessfulOrderId:'order-'+token}],...extra});}};
 }
 test('Play Team grants once, restores after acknowledgement failure and expires monthly credits',async t=>{
  const f=subscriptionFixture(t);f.add('team-token-001');f.failAck(true);
@@ -115,4 +115,17 @@ test('Play scheduled downgrade retains current credits and canceled renewal does
  const p=f.purchases.get('solo-later');p.subscriptionState='SUBSCRIPTION_STATE_CANCELED';p.lineItems=[{...old}];delete p.lineItems[0].deferredItemReplacement;
  await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.status(owner).scheduled_change,null);
  f.advance(31*86400000);p.subscriptionState='SUBSCRIPTION_STATE_EXPIRED';await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,0);assert.equal(f.service.status(owner).joe_balance,0);
+});
+
+test('annual Play refreshes monthly, retains cancellation access and revokes all future windows',async t=>{
+ const f=subscriptionFixture(t),start=f.time,end=new Date(start);end.setUTCFullYear(end.getUTCFullYear()+1);
+ f.add('annual-token-001','team_annual',{startTime:new Date(start).toISOString(),lineItems:[{productId:'contractorsight_team_annual',offerDetails:{basePlanId:'annual'},expiryTime:end.toISOString(),latestSuccessfulOrderId:'annual-order-1'}]});
+ await f.service.confirm(owner,'contractorsight_team_annual','annual-token-001');
+ assert.equal(f.service.status(owner).balance,150);assert.equal(f.service.status(owner).joe_balance,250);
+ await f.service.runSaved(owner.company_id)('analysis','annual-photo',async()=>true);assert.equal(f.service.status(owner).balance,149);
+ f.advance(32*86400000);f.restart();assert.equal(f.service.status(owner).balance,150);
+ await f.service.runSaved(owner.company_id)('analysis','annual-photo-2',async()=>true);await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,149);
+ const p=f.purchases.get('annual-token-001');p.subscriptionState='SUBSCRIPTION_STATE_CANCELED';await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,149);
+ p.subscriptionState='SUBSCRIPTION_STATE_EXPIRED';await f.service.reconcile(owner.company_id,true);assert.equal(f.service.status(owner).balance,0);
+ f.advance(32*86400000);assert.equal(f.service.status(owner).balance,0);assert.equal(f.service.status(owner).joe_balance,0);
 });

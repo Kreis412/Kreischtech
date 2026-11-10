@@ -77,3 +77,12 @@ test('website plan change shows price and renewal date and does not schedule unt
  host.querySelector('[data-dismiss-change]').onclick();assert.equal(confirmed,0);
  await host.querySelector('[data-change]').onclick();await host.querySelector('[data-confirm-change]').onclick();assert.equal(confirmed,1);assert.match(host.textContent,/Scheduled plan change/);assert.match(host.textContent,/24 photo analyses remaining/);
 });
+
+test('annual Play card shows the yearly store charge and sends the annual subscription sku',async t=>{
+ const host=browser(t);let method;
+ window.getDigitalGoodsService=async()=>({getDetails:async()=>[{itemId:'contractorsight_solo_annual',title:'Solo Annual',price:{currency:'USD',value:'190.00'}}]});
+ const old=globalThis.PaymentRequest;globalThis.PaymentRequest=class{constructor(m){method=m[0];}async show(){throw Object.assign(Error(),{name:'AbortError'});}};t.after(()=>{globalThis.PaymentRequest=old;});
+ const api=async path=>path.endsWith('/prepare')?{ready:true}:{ready:true,purchase_enabled:true,balance:0,joe_balance:0,plans:[{id:'contractorsight_solo_annual',plan:'solo_annual',name:'Solo Annual',interval:'year',seats:1,analyses:25,joe_answers:25}],packs:[]};
+ await playBillingView(host,{api,esc});assert.match(host.querySelector('[data-play-plans]').textContent,/190.00 \/ year/);assert.equal(host.querySelector('[data-play-packs]').textContent,'');
+ const b=host.querySelector('[data-buy]');await b.onclick();assert.equal(method,undefined);await b.onclick();assert.equal(method.data.sku,'contractorsight_solo_annual');
+});

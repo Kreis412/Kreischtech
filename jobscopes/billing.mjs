@@ -12,7 +12,8 @@ export const ANALYSIS_PACKS=Object.freeze([
 export const SUBSCRIPTION_PLANS = Object.freeze([
  Object.freeze({id:'solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25,joe_answers:25}),
  Object.freeze({id:'pro',name:'Pro',price_cents:3900,interval:'month',seats:1,analyses:75,joe_answers:100}),
- Object.freeze({id:'team',name:'Team',price_cents:7900,interval:'month',seats:5,analyses:150,joe_answers:250})
+ Object.freeze({id:'team',name:'Team',price_cents:7900,interval:'month',seats:5,analyses:150,joe_answers:250}),
+ ...[['solo','Solo',19000,1,25,25],['pro','Pro',39000,1,75,100],['team','Team',79000,5,150,250]].map(([tier,name,price_cents,seats,analyses,joe_answers])=>Object.freeze({id:tier+'_annual',name:name+' Annual',price_cents,seats,analyses,joe_answers,interval:'year'}))
 ]);
 export const PLANS = Object.freeze([
  ...SUBSCRIPTION_PLANS,
@@ -37,23 +38,24 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
  PRIMARY KEY(company,request_key));
  CREATE TABLE IF NOT EXISTS credit_adjustments(
  grant_id TEXT PRIMARY KEY REFERENCES credit_grants(id), available INTEGER NOT NULL CHECK(available>=0), reason TEXT NOT NULL);`);
+ if(!db.prepare('PRAGMA table_info(credit_grants)').all().some(c=>c.name==='starts'))db.exec('ALTER TABLE credit_grants ADD COLUMN starts INTEGER NOT NULL DEFAULT 0');
  function transaction(fn){db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}
  function grants(company,kind){return db.prepare(`SELECT g.*, coalesce(a.available,g.amount) allowance,
  (SELECT count(*) FROM credit_requests r WHERE r.grant_id=g.id AND r.state!='refunded') used
- FROM credit_grants g LEFT JOIN credit_adjustments a ON a.grant_id=g.id WHERE company=? AND kind=? AND expires>? ORDER BY expires,id`).all(company,kind,now());}
+ FROM credit_grants g LEFT JOIN credit_adjustments a ON a.grant_id=g.id WHERE company=? AND kind=? AND expires>? AND starts<=? ORDER BY expires,id`).all(company,kind,now(),now());}
  function carryoverBalance(company){return grants(company,'analysis').filter(g=>g.expires===CARRYOVER_EXPIRY).reduce((n,g)=>n+Math.max(0,g.allowance-g.used),0);}
  function balance(company,kind='analysis'){
   identifier(company);return grants(company,kind).reduce((n,g)=>n+Math.max(0,g.allowance-g.used),0);
  }
- function grant({id,company,kind='analysis',amount,expires,available=amount,reason='Payment verified'}){
+ function grant({id,company,kind='analysis',amount,expires,starts=0,available=amount,reason='Payment verified'}){
   identifier(id);identifier(company);
-  if(!['analysis','joe'].includes(kind)||!Number.isSafeInteger(amount)||amount<1||amount>100000||!Number.isSafeInteger(expires)||expires<=now())fail(400,'Invalid credit grant.');
+  if(!['analysis','joe'].includes(kind)||!Number.isSafeInteger(amount)||amount<1||amount>100000||!Number.isSafeInteger(expires)||expires<=now()||!Number.isSafeInteger(starts)||starts<0||starts>=expires)fail(400,'Invalid credit grant.');
   if(!Number.isSafeInteger(available)||available<0||available>amount)fail(400,'Invalid available credit amount.');
   identifier(reason);
   return transaction(()=>{
    const old=db.prepare('SELECT * FROM credit_grants WHERE id=?').get(id);
-   if(old){if(old.company!==company||old.kind!==kind||old.amount!==amount||old.expires!==expires)fail(409,'Grant identifier already used with different details.');return false;}
-   db.prepare('INSERT INTO credit_grants VALUES(?,?,?,?,?)').run(id,company,kind,amount,expires);
+   if(old){if(old.company!==company||old.kind!==kind||old.amount!==amount||old.expires!==expires||old.starts!==starts)fail(409,'Grant identifier already used with different details.');return false;}
+   db.prepare('INSERT INTO credit_grants(id,company,kind,amount,expires,starts) VALUES(?,?,?,?,?,?)').run(id,company,kind,amount,expires,starts);
    db.prepare('INSERT INTO credit_adjustments VALUES(?,?,?)').run(id,available,reason);return true;
   });
  }
@@ -89,12 +91,12 @@ export function billingStore(dataDir,{now=()=>Date.now()}={}) {
    db.prepare('INSERT INTO credit_adjustments VALUES(?,?,?) ON CONFLICT(grant_id) DO UPDATE SET available=excluded.available,reason=excluded.reason').run(id,available,reason);
   });
  }
- const grantInfo=(id,company)=>db.prepare('SELECT amount,expires,kind FROM credit_grants WHERE id=? AND company=?').get(id,company);
+ const grantInfo=(id,company)=>db.prepare('SELECT amount,expires,starts,kind FROM credit_grants WHERE id=? AND company=?').get(id,company);
  const grantAvailable=(id,company)=>db.prepare('SELECT coalesce(a.available,g.amount) amount FROM credit_grants g LEFT JOIN credit_adjustments a ON a.grant_id=g.id WHERE g.id=? AND g.company=?').get(id,company)?.amount??0;
  return {grantAvailable,balance,carryoverBalance,grant,reserve,settle,adjust,grantInfo,close:()=>db.close()};
 }
 
-export function billingPreview(){return {mode:'pilot',checkout_enabled:false,currency:'USD',plans:PLANS,trial_analyses:3,
+export function billingPreview(){return {mode:'pilot',checkout_enabled:false,currency:'USD',plans:PLANS.filter(p=>p.interval!=='year'),trial_analyses:3,
  message:'Your existing pilot access is unchanged. These are proposed launch plans; purchases and monthly allowances are not active yet.',
  joe_message:'The Solo launch plan includes 25 Joe answers per billing month, separate from its 25 photo analyses. Paid allowances are not active during this pilot.'};}
 

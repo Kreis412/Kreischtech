@@ -1,3 +1,4 @@
+import {addMonths,allowanceWindows,periodGrantIds} from './subscription-windows.mjs';
 import {createHash} from 'node:crypto';
 import {SUBSCRIPTION_PLANS} from './billing.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -9,6 +10,7 @@ export function playSubscriptions({db,credits,client,products={},allowTest,now,m
  CREATE TABLE IF NOT EXISTS play_replacements(old_hash TEXT PRIMARY KEY,new_hash TEXT NOT NULL UNIQUE);
  CREATE TABLE IF NOT EXISTS play_next_plans(token_hash TEXT PRIMARY KEY,product TEXT NOT NULL,effective INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS play_subscription_periods(order_id TEXT PRIMARY KEY,token_hash TEXT NOT NULL,company TEXT NOT NULL,plan TEXT NOT NULL,expires INTEGER NOT NULL);`);
+ if(!db.prepare('PRAGMA table_info(play_subscription_periods)').all().some(c=>c.name==='starts'))db.exec('ALTER TABLE play_subscription_periods ADD COLUMN starts INTEGER NOT NULL DEFAULT 0');
  const catalog=SUBSCRIPTION_PLANS.filter(p=>typeof products[p.id]==='string'&&/^[a-z][a-z0-9_.]{1,100}$/.test(products[p.id])).map(p=>({...p,id:products[p.id],plan:p.id}));
  if(new Set(catalog.map(p=>p.id)).size!==catalog.length)throw Error('Google Play subscription products must be unique.');
  const planFor=product=>catalog.find(p=>p.id===product)||fail(400,'Choose a configured subscription.');
@@ -18,7 +20,7 @@ export function playSubscriptions({db,credits,client,products={},allowTest,now,m
    if(period.order_id===exceptOrder)continue;
    for(const kind of ['analysis','joe']){
     const id=`play-sub:${kind}:${hash(period.order_id)}`;
-    if(credits.grantInfo(id,row.company))credits.adjust(id,row.company,0,'Google Play subscription reconciliation');
+    for(const grantId of periodGrantIds(id))if(credits.grantInfo(grantId,row.company))credits.adjust(grantId,row.company,0,'Google Play subscription reconciliation');
    }
   }
  }
@@ -27,7 +29,7 @@ export function playSubscriptions({db,credits,client,products={},allowTest,now,m
   if(p.testPurchase&&!allowTest)fail(400,'Test purchases are not enabled on this server.');
   if(p.subscriptionState==='SUBSCRIPTION_STATE_PENDING')return {confirmed:false,pending:true};
   const items=p.lineItems||[];
-  if(!items.length||items.length>2||items.some(i=>!catalog.some(c=>c.id===i.productId)||i.offerDetails?.basePlanId!=='monthly'))fail(409,'Google Play subscription does not match the configured monthly plans.');
+  if(!items.length||items.length>2||items.some(i=>!catalog.some(c=>c.id===i.productId)||i.offerDetails?.basePlanId!==(catalog.find(c=>c.id===i.productId)?.interval==='year'?'annual':'monthly')))fail(409,'Google Play subscription does not match the configured plans.');
   const current=items.filter(i=>Date.parse(i.expiryTime)>now());
   if(current.length>1)fail(409,'Multiple active subscription items need support review.');
   const item=current[0]||items.find(i=>i.productId===row.product&&i.expiryTime);
@@ -50,6 +52,12 @@ export function playSubscriptions({db,credits,client,products={},allowTest,now,m
   if(existing&&(existing.company!==row.company||(existing.token_hash!==row.token_hash&&existing.token_hash!==previous?.token_hash)||existing.plan!==plan.plan))fail(409,'This billing period already belongs to another purchase.');
   // Grace periods do not award another month's allowance for an unpaid renewal.
   if(eligible&&state==='SUBSCRIPTION_STATE_IN_GRACE_PERIOD'&&!existing)fail(409,'Restore the subscription after Google confirms payment.');
+  const periodEnd=existing?.expires??expires;
+  // For annual renewals, use the latest paid expiry, never the initial signup year.
+  // A delayed restore must not restart a fresh allowance at the restore time.
+  const annualStart=Math.max(addMonths(periodEnd,-12),Date.parse(item.startTime||p.startTime)||0);
+  const periodStart=existing?.starts??(plan.interval==='year'?annualStart:0);
+  const windows=eligible?allowanceWindows(plan.interval,periodStart,periodEnd):[];
   // Complete all validation before replacing the previous receipt or touching credits.
   if(previous){
    db.prepare('INSERT OR IGNORE INTO play_replacements VALUES(?,?)').run(previous.token_hash,row.token_hash);
@@ -62,13 +70,12 @@ export function playSubscriptions({db,credits,client,products={},allowTest,now,m
   if(future&&eligible&&state==='SUBSCRIPTION_STATE_ACTIVE')db.prepare('INSERT INTO play_next_plans VALUES(?,?,?)').run(row.token_hash,future.productId,expires);
   db.prepare(`INSERT INTO play_subscriptions VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(token_hash) DO UPDATE SET product=excluded.product,plan=excluded.plan,state=excluded.state,expires=excluded.expires,checked=excluded.checked`).run(row.token_hash,row.token,row.company,row.user_id,item.productId,plan.plan,state,expires,now());
   if(!eligible){revokePeriods(row);return {confirmed:false,pending:state==='SUBSCRIPTION_STATE_PENDING'};}
-  if(!existing)db.prepare('INSERT INTO play_subscription_periods VALUES(?,?,?,?,?)').run(order,row.token_hash,row.company,plan.plan,expires);
+  if(!existing)db.prepare('INSERT INTO play_subscription_periods(order_id,token_hash,company,plan,expires,starts) VALUES(?,?,?,?,?,?)').run(order,row.token_hash,row.company,plan.plan,expires,periodStart);
   revokePeriods(row,order);
-  const periodEnd=existing?.expires??expires;
   // Preserve the original monthly deadline if Google extends grace time.
-  if(periodEnd>now())for(const [kind,amount] of [['analysis',plan.analyses],['joe',plan.joe_answers]]){
-   const id=`play-sub:${kind}:${hash(order)}`;
-   credits.grant({id,company:row.company,kind,amount,expires:periodEnd});
+  for(const window of windows.filter(w=>w.expires>now()))for(const [kind,amount] of [['analysis',plan.analyses],['joe',plan.joe_answers]]){
+   const id=`play-sub:${kind}:${hash(order)}`+window.suffix;
+   credits.grant({id,company:row.company,kind,amount,...window});
    credits.adjust(id,row.company,amount,'Google Play paid subscription period');
   }
   if(p.acknowledgementState==='ACKNOWLEDGEMENT_STATE_PENDING')await client.acknowledge(future?.productId||item.productId,row.token);
