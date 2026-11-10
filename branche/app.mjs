@@ -30,7 +30,7 @@ export function createHandler(store,{now=()=>Date.now()}={}){
  async function limit(key,max,ms){const id=key+':'+Math.floor(now()/ms);const [r]=await q('INSERT INTO branche_limits(id,count,expires) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=branche_limits.count+1 RETURNING count',[id,now()+ms]);if(Number(r.count)>max)fail(429,'Please slow down and try again later.');}
  async function session(req){const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('branche_session='))?.slice(16);if(!token)return null;return (await q('SELECT u.id,u.name,u.role,u.email FROM branche_users u JOIN branche_sessions s ON s.uid=u.id WHERE s.token=? AND s.expires>?',[hash(token),now()]))[0]||null;}
  async function blocked(a,b){return (await q('SELECT uid FROM branche_blocks WHERE (uid=? AND target=?) OR (uid=? AND target=?)',[a,b,b,a])).length>0;}
- async function json(req){let size=0,parts=[];for await(const c of req){size+=c.length;if(size>16000)fail(413,'This request is too large.');parts.push(c);}try{const b=JSON.parse(Buffer.concat(parts));if(!b||Array.isArray(b)||typeof b!=='object')throw Error();return b;}catch{fail(400,'Invalid request.');}}
+ async function json(req){if(req.body!==undefined){let b=req.body;try{if(typeof b==='string'||Buffer.isBuffer(b))b=JSON.parse(b.toString());if(!b||Array.isArray(b)||typeof b!=='object')fail(400,'Invalid request.');if(Buffer.byteLength(JSON.stringify(b))>16000)fail(413,'This request is too large.');return b;}catch(e){if(e.status)throw e;fail(400,'Invalid request.');}}let size=0,parts=[];for await(const c of req){size+=c.length;if(size>16000)fail(413,'This request is too large.');parts.push(c);}try{const b=JSON.parse(Buffer.concat(parts));if(!b||Array.isArray(b)||typeof b!=='object')throw Error();return b;}catch{fail(400,'Invalid request.');}}
  return async(req,res)=>{
  const send=(code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
  try{
@@ -82,3 +82,4 @@ export function createHandler(store,{now=()=>Date.now()}={}){
  }catch(e){if(!e.status)console.error('Branche request failed:',e.code||e.name);send(e.status||500,{error:e.status?e.message:'Could not complete this request. Please try again.'});}
  };
 }
+
