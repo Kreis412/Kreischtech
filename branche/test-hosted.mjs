@@ -44,6 +44,6 @@ try{
  if(job?.data.id)assert.equal((await call('job-state',{id:job.data.id,state:'closed'},c.cookie,'PUT')).status,200);
  assert.equal((await call('profile',{...profile,published:false},p.cookie,'PUT')).status,200);
  if(mediaId){await call('media-config',{kind:'profile',target:p.data.user.id,logo:'',photos:[],link:'',video:''},p.cookie,'PUT');assert.equal((await call('media-upload',{id:mediaId},p.cookie,'DELETE')).status,200);}
- for(const a of [c,p])await call('logout',{},a.cookie);
- console.log('QA job closed, QA business unpublished, QA sessions signed out.');
+ for(const a of [c,p])assert.equal((await call('account-delete',{password},a.cookie)).status,200);
+ console.log('QA job closed, QA media removed and both QA accounts deleted.');
 }

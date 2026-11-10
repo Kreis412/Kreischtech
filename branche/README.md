@@ -38,5 +38,7 @@ Both apps must be deployed before the connection flow can be used.
 - User image library includes unused-image deletion; currently capped at 30 images per account and 20 uploads per day.
 - Hosted upload, linking, image retrieval, ownership and cleanup were verified against the private preview.
 - Recovery code is prepared. Configure BRANCHE_GMAIL_APP_PASSWORD securely in Vercel and BRANCHE_PUBLIC_URL as the canonical HTTPS app URL. Mail sends from kreischtech@gmail.com. Never commit the app password.
-- Before public release: verify Gmail delivery and password reset end-to-end, implement/activate an operator moderation queue and account deletion, finalize the privacy/retention notice, and remove preview-only wording only when ready. Do not simply remove Vercel protection.
+- Before public release: verify Gmail delivery and password reset end-to-end, configure BRANCHE_ADMIN_IDS with the verified owner account ID, verify the operator moderation queue and account deletion on the hosted database, review the privacy/retention notice, and remove preview-only wording only when ready. Do not simply remove Vercel protection.
 - Branche remains separate from ContractorSight authentication and billing.
+
+Operator moderation and password-confirmed account deletion are implemented. Admin access is denied unless BRANCHE_ADMIN_IDS explicitly contains the signed-in account ID. Do not infer operator access from a public business name or unverified email.

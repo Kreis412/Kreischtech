@@ -1,3 +1,4 @@
+import {operationsSchema,operations} from './operations.mjs';
 import {recoverySchema,recoveryHandler} from './recovery.mjs';
 import {mediaSchemas,mediaHandler} from './media.mjs';
 import {randomUUID,randomBytes,createHash,scryptSync,timingSafeEqual} from 'node:crypto';
@@ -11,10 +12,10 @@ const hash=v=>createHash('sha256').update(v).digest('hex');
 const category=v=>categories.includes(v)?v:fail(400,'Choose a service category.');
 const safeUser=u=>u?{id:u.id,name:u.name,role:u.role}:null;
 export async function openStore({directory='data',databaseUrl=process.env.DATABASE_URL}={}){
- let query,close;
- if(databaseUrl){const {Pool}=await import('pg');const pool=new Pool({connectionString:databaseUrl,max:3});query=async(sql,params=[])=>{let i=0;return (await pool.query(sql.replace(/\?/g,()=>'$'+(++i)),params)).rows;};close=()=>pool.end();}
- else {if(process.env.VERCEL)fail(503,'The shared test database is not connected yet. Please use the local test for now.');const {DatabaseSync}=await import('node:sqlite');mkdirSync(directory,{recursive:true});const db=new DatabaseSync(join(directory,'branche.sqlite'));db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');query=async(sql,params=[])=>db.prepare(sql).all(...params);close=()=>db.close();}
- const schemas=[recoverySchema,...mediaSchemas,
+ let query,close,transaction;
+ if(databaseUrl){const {Pool}=await import('pg');const pool=new Pool({connectionString:databaseUrl,max:3});query=async(sql,params=[])=>{let i=0;return (await pool.query(sql.replace(/\?/g,()=>'$'+(++i)),params)).rows;};transaction=async fn=>{const client=await pool.connect();try{await client.query('BEGIN');const tq=async(sql,params=[])=>{let i=0;return (await client.query(sql.replace(/\?/g,()=>'$'+(++i)),params)).rows;};const result=await fn(tq);await client.query('COMMIT');return result;}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}};close=()=>pool.end();}
+ else {if(process.env.VERCEL)fail(503,'The shared test database is not connected yet. Please use the local test for now.');const {DatabaseSync}=await import('node:sqlite');mkdirSync(directory,{recursive:true});const db=new DatabaseSync(join(directory,'branche.sqlite'));db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');query=async(sql,params=[])=>db.prepare(sql).all(...params);transaction=async fn=>{db.exec('BEGIN IMMEDIATE');try{const result=await fn(query);db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}};close=()=>db.close();}
+ const schemas=[operationsSchema,recoverySchema,...mediaSchemas,
  'CREATE TABLE IF NOT EXISTS branche_posts(id TEXT PRIMARY KEY,uid TEXT NOT NULL,title TEXT NOT NULL,category TEXT NOT NULL,city TEXT NOT NULL,description TEXT NOT NULL,state TEXT NOT NULL,created BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_workspaces(uid TEXT PRIMARY KEY,company TEXT UNIQUE NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,created BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,role TEXT NOT NULL,salt TEXT NOT NULL,secret TEXT NOT NULL,terms TEXT NOT NULL,created BIGINT NOT NULL)',
@@ -27,10 +28,10 @@ export async function openStore({directory='data',databaseUrl=process.env.DATABA
  'CREATE TABLE IF NOT EXISTS branche_reports(id TEXT PRIMARY KEY,uid TEXT NOT NULL,target TEXT NOT NULL,kind TEXT NOT NULL,reason TEXT NOT NULL,created BIGINT NOT NULL,state TEXT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_limits(id TEXT PRIMARY KEY,count INTEGER NOT NULL,expires BIGINT NOT NULL)'];
  for(const schema of schemas)await query(schema);
- return {query,close};
+ return {query,close,transaction};
 }
-export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,mediaStorage,recoveryOptions}={}){
- const q=store.query; const handleRecovery=recoveryHandler(q,{now,...recoveryOptions}); const handleMedia=mediaHandler(q,mediaStorage?{storage:mediaStorage}:{});
+export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,mediaStorage,recoveryOptions,operationsOptions}={}){
+ const q=store.query; const ops=operations(store,operationsOptions); const handleRecovery=recoveryHandler(q,{now,...recoveryOptions}); const handleMedia=mediaHandler(q,mediaStorage?{storage:mediaStorage}:{});
  async function limit(key,max,ms){const id=key+':'+Math.floor(now()/ms);const [r]=await q('INSERT INTO branche_limits(id,count,expires) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=branche_limits.count+1 RETURNING count',[id,now()+ms]);if(Number(r.count)>max)fail(429,'Please slow down and try again later.');}
  async function session(req){const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('branche_session='))?.slice(16);if(!token)return null;return (await q('SELECT u.id,u.name,u.role,u.email FROM branche_users u JOIN branche_sessions s ON s.uid=u.id WHERE s.token=? AND s.expires>?',[hash(token),now()]))[0]||null;}
  async function blocked(a,b){return (await q('SELECT uid FROM branche_blocks WHERE (uid=? AND target=?) OR (uid=? AND target=?)',[a,b,b,a])).length>0;}
@@ -44,16 +45,18 @@ export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,m
  const write=req.method!=='GET';
  if(write){const origin=req.headers.origin;let expected='http://'+req.headers.host;if(process.env.VERCEL)expected='https://'+req.headers.host;if(origin!==expected)fail(403,'Please use this site to submit changes.');if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'Expected JSON.');}
  const u=await session(req),body=write?await json(req):{};
+ if(await ops.handle({path,req,res,url,u,body,send,limit}))return;
+ if(u&&write&&path!=='/api/branche/logout'&&(await q('SELECT uid FROM branche_suspensions WHERE uid=?',[u.id])).length)fail(403,'This account is suspended. Contact kreischtech@gmail.com.');
  if(await handleRecovery({path,req,body,send,limit}))return;
  if(await handleMedia({path,req,res,url,u,body,send,limit}))return;
- if(path==='/api/branche/session'&&!write)return send(200,{user:safeUser(u),categories,termsVersion,test:true});
+ if(path==='/api/branche/session'&&!write)return send(200,{user:safeUser(u),operator:ops.isAdmin(u),categories,termsVersion,test:true});
  if(['/api/branche/register','/api/branche/login'].includes(path)&&req.method==='POST'){
  await limit('auth:'+(req.socket?.remoteAddress||'shared'),20,900000);
  const email=text(body.email,254).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Enter a valid email.');
  const pass=text(body.password,200);if(pass.length<12)fail(400,'Use a password of at least 12 characters.');let user;
  if(path.endsWith('register')){if(body.terms!==termsVersion)fail(400,'Please accept the community test terms and safety notice.');if(!['customer','contractor'].includes(body.role))fail(400,'Choose customer or contractor.');const salt=randomBytes(16).toString('hex'),secret=scryptSync(pass,salt,32).toString('hex');user={id:randomUUID(),name:text(body.name,100),role:body.role};try{await q('INSERT INTO branche_users VALUES(?,?,?,?,?,?,?,?)',[user.id,email,user.name,user.role,salt,secret,termsVersion,now()]);}catch(e){if(/unique|constraint/i.test(e.message))fail(409,'That account already exists. Please sign in.');throw e;}}
  else{user=(await q('SELECT * FROM branche_users WHERE email=?',[email]))[0];const candidate=scryptSync(pass,user?.salt||'missing-user',32);if(!timingSafeEqual(candidate,Buffer.from(user?.secret||'00'.repeat(32),'hex')))fail(401,'Email or password is incorrect.');}
- const token=randomBytes(32).toString('hex');await q('INSERT INTO branche_sessions VALUES(?,?,?)',[hash(token),user.id,now()+86400000]);res.setHeader('Set-Cookie',`branche_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.VERCEL?'; Secure':''}`);return send(200,{user:safeUser(user)});
+ const token=randomBytes(32).toString('hex');await q('INSERT INTO branche_sessions VALUES(?,?,?)',[hash(token),user.id,now()+86400000]);res.setHeader('Set-Cookie',`branche_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.VERCEL?'; Secure':''}`);return send(200,{user:safeUser(user),operator:ops.isAdmin(user)});
  }
  if(path==='/api/branche/profiles'&&!write){const rows=await q('SELECT uid,name,contact,category,city,region,description,services,license,issuer,insurance FROM branche_profiles WHERE published=1 ORDER BY updated DESC LIMIT 200');return send(200,{profiles:rows});}
  if(path==='/api/branche/jobs'&&!write){const rows=await q("SELECT j.id,j.uid,j.title,j.category,j.city,j.description,j.timing,j.budget,j.state,j.created,u.name FROM branche_jobs j JOIN branche_users u ON u.id=j.uid WHERE j.state='open' ORDER BY j.created DESC LIMIT 200");return send(200,{jobs:rows.map(r=>({...r,name:r.name.split(' ')[0]}))});}
