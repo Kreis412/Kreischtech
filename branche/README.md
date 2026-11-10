@@ -16,3 +16,18 @@ Reports are saved in branche_reports with pending status; an operator must
 review them. Do not invite the general public before moderation, recovery,
 account deletion and a full privacy/retention process are in place.
 Example requests are visibly labelled and are not real leads.
+
+## ContractorSight connection (first integration stage)
+Contractors can open `#workspace` in Branche and paste a one-use code generated
+by their existing ContractorSight Owner account at `#settings/branche`.
+Codes expire after ten minutes, are stored hashed, and are consumed once.
+Redemption rechecks Owner access. Matching email addresses never links accounts.
+Each ContractorSight company can link to one Branche account. Disconnecting
+removes only the mapping and never cancels billing or deletes a workspace.
+The fixed server-to-server destination is contractorsight-pilot.onrender.com;
+callers cannot supply an arbitrary endpoint.
+
+Current scope: business identity and an Open workspace button. Sign-ins remain
+separate. This is not SSO and does not import messages, projects or invoices.
+Inquiry-to-project conversion and shared sign-in are subsequent work.
+Both apps must be deployed before the connection flow can be used.
