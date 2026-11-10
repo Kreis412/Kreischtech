@@ -13,6 +13,7 @@ export async function openStore({directory='data',databaseUrl=process.env.DATABA
  if(databaseUrl){const {Pool}=await import('pg');const pool=new Pool({connectionString:databaseUrl,max:3});query=async(sql,params=[])=>{let i=0;return (await pool.query(sql.replace(/\?/g,()=>'$'+(++i)),params)).rows;};close=()=>pool.end();}
  else {if(process.env.VERCEL)fail(503,'The shared test database is not connected yet. Please use the local test for now.');const {DatabaseSync}=await import('node:sqlite');mkdirSync(directory,{recursive:true});const db=new DatabaseSync(join(directory,'branche.sqlite'));db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');query=async(sql,params=[])=>db.prepare(sql).all(...params);close=()=>db.close();}
  const schemas=[
+ 'CREATE TABLE IF NOT EXISTS branche_workspaces(uid TEXT PRIMARY KEY,company TEXT UNIQUE NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,created BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,role TEXT NOT NULL,salt TEXT NOT NULL,secret TEXT NOT NULL,terms TEXT NOT NULL,created BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_sessions(token TEXT PRIMARY KEY,uid TEXT NOT NULL,expires BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_profiles(uid TEXT PRIMARY KEY,name TEXT NOT NULL,contact TEXT NOT NULL,category TEXT NOT NULL,city TEXT NOT NULL,region TEXT NOT NULL,description TEXT NOT NULL,services TEXT NOT NULL,license TEXT NOT NULL,issuer TEXT NOT NULL,insurance TEXT NOT NULL,published INTEGER NOT NULL,updated BIGINT NOT NULL)',
@@ -25,7 +26,7 @@ export async function openStore({directory='data',databaseUrl=process.env.DATABA
  for(const schema of schemas)await query(schema);
  return {query,close};
 }
-export function createHandler(store,{now=()=>Date.now()}={}){
+export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch}={}){
  const q=store.query;
  async function limit(key,max,ms){const id=key+':'+Math.floor(now()/ms);const [r]=await q('INSERT INTO branche_limits(id,count,expires) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=branche_limits.count+1 RETURNING count',[id,now()+ms]);if(Number(r.count)>max)fail(429,'Please slow down and try again later.');}
  async function session(req){const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('branche_session='))?.slice(16);if(!token)return null;return (await q('SELECT u.id,u.name,u.role,u.email FROM branche_users u JOIN branche_sessions s ON s.uid=u.id WHERE s.token=? AND s.expires>?',[hash(token),now()]))[0]||null;}
@@ -53,6 +54,21 @@ export function createHandler(store,{now=()=>Date.now()}={}){
  if(path==='/api/branche/jobs'&&!write){const rows=await q("SELECT j.id,j.uid,j.title,j.category,j.city,j.description,j.timing,j.budget,j.state,j.created,u.name FROM branche_jobs j JOIN branche_users u ON u.id=j.uid WHERE j.state='open' ORDER BY j.created DESC LIMIT 200");return send(200,{jobs:rows.map(r=>({...r,name:r.name.split(' ')[0]}))});}
  if(!u)fail(401,'Please sign in to continue.');
  if(write)await limit('write:'+u.id,40,60000);
+ if(path==='/api/branche/workspace'){
+ if(u.role!=='contractor')fail(403,'A contractor account is required to connect a workspace.');
+ const workspaceUrl='https://contractorsight-pilot.onrender.com/';
+ if(!write)return send(200,{workspace:(await q('SELECT name,created FROM branche_workspaces WHERE uid=?',[u.id]))[0]||null,url:workspaceUrl});
+ if(req.method==='DELETE'){await q('DELETE FROM branche_workspaces WHERE uid=?',[u.id]);return send(200,{saved:true});}
+ if(req.method!=='POST')fail(405,'Method not allowed.');
+ if((await q('SELECT uid FROM branche_workspaces WHERE uid=?',[u.id])).length)fail(409,'Disconnect the current workspace before connecting a different one.');
+ await limit('link:'+u.id,5,600000);const code=text(body.code,100);
+ let response;try{response=await workspaceRequest(workspaceUrl+'api/branche/redeem',{method:'POST',redirect:'error',headers:{'Content-Type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(12000)});}catch{fail(503,'Could not reach ContractorSight. Your account and subscription have not changed.');}
+ let linked;try{linked=await response.json();}catch{fail(503,'Workspace connection is not available on ContractorSight yet.');}
+ if(!response.ok)fail(response.status===400?400:503,response.status===400?'The connection code is invalid, expired or already used. Create another code in ContractorSight.':'ContractorSight could not complete the connection. Please try again later.');
+ for(const k of ['user_id','company_id','company_name'])if(typeof linked[k]!=='string'||!linked[k]||linked[k].length>200)fail(502,'ContractorSight returned an invalid connection.');
+ try{await q('INSERT INTO branche_workspaces VALUES(?,?,?,?,?)',[u.id,linked.company_id,linked.user_id,linked.company_name,now()]);}catch(e){if(/unique|constraint/i.test(e.message))fail(409,'This workspace is already connected to a Branche account.');throw e;}
+ return send(200,{saved:true,name:linked.company_name});
+ }
  if(path==='/api/branche/logout'&&req.method==='POST'){await q('DELETE FROM branche_sessions WHERE uid=?',[u.id]);res.setHeader('Set-Cookie','branche_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');return send(200,{saved:true});}
  if(path==='/api/branche/profile'){
  if(u.role!=='contractor')fail(403,'Business pages are for contractor accounts.');
