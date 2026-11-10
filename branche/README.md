@@ -31,3 +31,12 @@ Current scope: business identity and an Open workspace button. Sign-ins remain
 separate. This is not SSO and does not import messages, projects or invoices.
 Inquiry-to-project conversion and shared sign-in are subsequent work.
 Both apps must be deployed before the connection flow can be used.
+
+## Media and launch readiness (2026-11-10)
+- Private Vercel Blob storage: uploaded JPEG/PNG/WebP is decoded, resized, re-encoded as WebP, and stripped of metadata. Public read access requires attachment to a currently published page/post; unpublished and unattached images are owner-only.
+- Six gallery images per page/post, one business logo, safe HTTPS website link and YouTube link. Videos open YouTube; no video file upload yet.
+- User image library includes unused-image deletion; currently capped at 30 images per account and 20 uploads per day.
+- Hosted upload, linking, image retrieval, ownership and cleanup were verified against the private preview.
+- Recovery code is prepared. Configure BRANCHE_GMAIL_APP_PASSWORD securely in Vercel and BRANCHE_PUBLIC_URL as the canonical HTTPS app URL. Mail sends from kreischtech@gmail.com. Never commit the app password.
+- Before public release: verify Gmail delivery and password reset end-to-end, implement/activate an operator moderation queue and account deletion, finalize the privacy/retention notice, and remove preview-only wording only when ready. Do not simply remove Vercel protection.
+- Branche remains separate from ContractorSight authentication and billing.

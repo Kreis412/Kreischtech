@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 const share=new URL(process.env.BRANCHE_TEST_SHARE),base=share.origin;
@@ -20,9 +21,17 @@ const run=randomUUID(),password=randomUUID()+randomUUID();
 const signup=async(role)=>{const r=await call('register',{name:'QA test '+role,email:role+'-'+run+'@example.test',password,role,terms:session.data.termsVersion});assert.equal(r.status,200,JSON.stringify(r.data));return r;};
 const c=await signup('customer'),p=await signup('contractor');
 const profile={name:'QA test — not a real business',contact:'QA operator',category:'Carpentry',city:'Mentor',region:'Ohio',description:'Automated private test. Not a real business.',services:'Test only',published:true};
-let job;
+let job,mediaId;
 try{
  assert.equal((await call('profile',profile,p.cookie,'PUT')).status,200);
+ const image='data:image/png;base64,'+(await sharp({create:{width:40,height:40,channels:3,background:'#225c44'}}).png().toBuffer()).toString('base64');
+ const upload=await call('media-upload',{image},p.cookie);assert.equal(upload.status,201,JSON.stringify(upload.data));mediaId=upload.data.id;
+ const config={kind:'profile',target:p.data.user.id,logo:mediaId,photos:[mediaId],link:'https://example.com',video:'https://youtu.be/test'};
+ assert.equal((await call('media-config',config,c.cookie,'PUT')).status,404);
+ assert.equal((await call('media-config',config,p.cookie,'PUT')).status,200);
+ const pic=await fetch(base+'/api/branche/media-file?id='+mediaId,{headers:{cookie:protection}});
+ assert.equal(pic.status,200);assert.equal((await sharp(Buffer.from(await pic.arrayBuffer())).metadata()).format,'webp');
+ console.log('PASS hosted image upload, logo/gallery linking, WebP download and ownership');
  job=await call('jobs',{title:'QA test — not a real job',category:'Carpentry',city:'Mentor',description:'Automated private test only.',timing:'Test only'},c.cookie);assert.equal(job.status,201,JSON.stringify(job.data));
  const t=await call('threads',{job:job.data.id,message:'QA test inquiry'},p.cookie);assert.equal(t.status,201,JSON.stringify(t.data));
  assert.equal((await call('messages',{thread:t.data.id,message:'QA test reply'},c.cookie)).status,201);
@@ -34,6 +43,7 @@ try{
 }finally{
  if(job?.data.id)assert.equal((await call('job-state',{id:job.data.id,state:'closed'},c.cookie,'PUT')).status,200);
  assert.equal((await call('profile',{...profile,published:false},p.cookie,'PUT')).status,200);
+ if(mediaId){await call('media-config',{kind:'profile',target:p.data.user.id,logo:'',photos:[],link:'',video:''},p.cookie,'PUT');assert.equal((await call('media-upload',{id:mediaId},p.cookie,'DELETE')).status,200);}
  for(const a of [c,p])await call('logout',{},a.cookie);
  console.log('QA job closed, QA business unpublished, QA sessions signed out.');
 }
