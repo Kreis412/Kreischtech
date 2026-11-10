@@ -1,3 +1,4 @@
+import {brancheLinkView} from '/branche-link.js';
 import { fieldNotes } from '/field-notes.js';
 import {renderSettingsSection} from '/settings-navigation.js';
 import {initAnalytics,analyticsSettings} from '/analytics.js';
@@ -233,7 +234,7 @@ async function expertiseSettings(host=main){
  form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{await write('/api/business-expertise','PUT',Object.fromEntries(new FormData(form)));host.querySelector('#expertise-status').textContent='Profession saved. Joe and new photo analyses will use it.';}catch(error){host.querySelector('#expertise-status').textContent=error.message;}finally{b.disabled=false;}};
 }
 function settingsNavigation() {
-  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/privacy','Privacy & analytics'],['#settings/checkin','Daily check-in'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
+  return '<nav class="settings-nav" aria-label="Settings sections">'+[['#settings/branche','Connect Branche'],['#settings','Company & team'],['#settings/expertise','Profession & specialties'],['#settings/profile','Company profile & gallery'],['#settings/billing','Plans & upgrades'],['#settings/privacy','Privacy & analytics'],['#settings/checkin','Daily check-in'],['#settings/appearance','Appearance'],['#settings/assistant','Joe assistant'],['#settings/security','Security & backups']].map(([url,label])=>`<a href="${url}" ${location.hash===url?'aria-current="page"':''}>${label}</a>`).join('')+'</nav>';
 }
 function appearanceView(host=main) {
   const dark=document.documentElement.dataset.theme==='dark';
@@ -260,7 +261,8 @@ async function load() {
     if (location.hash.startsWith('#settings')) {
       main.onclick=null;current=null;$('#breadcrumb').textContent='Settings';
       await renderSettingsSection(main,{render:async section=>{
-      if(location.hash==='#settings/security') await security.mount(section);
+      if(location.hash==='#settings/branche') await brancheLinkView(section,{api,esc});
+      else if(location.hash==='#settings/security') await security.mount(section);
       else if(location.hash==='#settings/profile') await companyProfile(section,{api,esc});
       else if(location.hash==='#settings/billing') await billingView(section,{api,esc});
       else if(location.hash==='#settings/privacy') analyticsSettings(section);
