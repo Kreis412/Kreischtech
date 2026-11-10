@@ -151,5 +151,5 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
     }
     fail(404,'Account action not found.');
   }
-  return {session,handle,memberCount,hasMember:(user,company)=>Boolean(db.prepare('SELECT 1 FROM memberships WHERE user_id=? AND company_id=?').get(user,company)),close:()=>db.close()};
+  return {session,handle,memberCount,isOwner:(user,company)=>Boolean(db.prepare("SELECT 1 FROM memberships WHERE user_id=? AND company_id=? AND role='Owner'").get(user,company)),hasMember:(user,company)=>Boolean(db.prepare('SELECT 1 FROM memberships WHERE user_id=? AND company_id=?').get(user,company)),close:()=>db.close()};
 }

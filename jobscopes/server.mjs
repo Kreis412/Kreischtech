@@ -1,3 +1,4 @@
+import {brancheLink} from './branche-link.mjs';
 import {pushReminders} from './push-reminders.mjs';
 import {weatherService} from './weather.mjs';
 import {playBilling} from './play-billing.mjs';
@@ -45,6 +46,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   const portal=customerPortal(dataDir);
   const booking=appointments(dataDir);
   const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,companyOfferStatus:()=>profileOffer.status(),onCompanyCreated:(company,user)=>profileOffer.award({company,owner:user,reference:'business-profile:'+company,grant:details=>profileCredits.grant(details)}),seatLimit:company=>{const stripePaid=billing?.hasPaidCompany(company),playPaid=play?.hasPaidCompany(company);return stripePaid||playPaid?Math.max(stripePaid?(billing.seatLimit?.(company)??1):1,playPaid?play.seatLimit(company):1):Infinity;}}),workspaces=new Map();
+  const branche=brancheLink(dataDir,{member:auth.isOwner});
   const reminders=pushReminders(dataDir,{member:auth.hasMember});
   const live=process.env.STRIPE_LIVE_BILLING==='1';
   billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,pro:process.env.STRIPE_PRO_PRICE_ID,team:process.env.STRIPE_TEAM_PRICE_ID,solo_annual:process.env.STRIPE_SOLO_ANNUAL_PRICE_ID,pro_annual:process.env.STRIPE_PRO_ANNUAL_PRICE_ID,team_annual:process.env.STRIPE_TEAM_ANNUAL_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount,otherSubscription:company=>play?.hasSubscription(company)??false});
@@ -91,6 +93,12 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         for await(const chunk of req){size+=chunk.length;if(size>262144)fail(413,'Webhook is too large.');chunks.push(chunk);}
         await billing.webhook(Buffer.concat(chunks),req.headers['stripe-signature']);return send(200,{received:true});
       }
+      if(url.pathname==='/api/branche/redeem'&&req.method==='POST'){
+        // Machine-only, authenticated by a short-lived, one-use owner-generated code.
+        if(req.headers.origin||req.headers['sec-fetch-site'])fail(403,'Use the Branche server to connect.');
+        policy.guard({method:'GET',url:req.url,headers:req.headers,socket:req.socket});
+        return send(200,branche.redeem((await json(req)).code,req.socket.remoteAddress));
+      }
       policy.guard(req);
       if(!policy.hosted && req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) fail(403,'Cross-origin requests are blocked.');
       if(req.headers['sec-fetch-site']==='cross-site' && !(policy.hosted && isPublicEntryNavigation(req))) fail(403,'Cross-site requests are blocked.');
@@ -110,7 +118,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(url.pathname==='/delete-account.html') return send(200,readFileSync(join(ROOT,'public/delete-account.html')),'text/html; charset=utf-8');
         if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        const files={'scan-media.js':'text/javascript','settings-navigation.js':'text/javascript','analytics.js':'text/javascript','analytics-config.js':'text/javascript','notifications.js':'text/javascript','daily-checkin.js':'text/javascript','home.js':'text/javascript','project-payments.js':'text/javascript','calculators.js':'text/javascript','customer.html':'text/html','customer.js':'text/javascript','customer-admin.js':'text/javascript','company-profile.js':'text/javascript','terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','play-billing.js':'text/javascript','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','field-notes.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
+        const files={'branche-link.js':'text/javascript','scan-media.js':'text/javascript','settings-navigation.js':'text/javascript','analytics.js':'text/javascript','analytics-config.js':'text/javascript','notifications.js':'text/javascript','daily-checkin.js':'text/javascript','home.js':'text/javascript','project-payments.js':'text/javascript','calculators.js':'text/javascript','customer.html':'text/html','customer.js':'text/javascript','customer-admin.js':'text/javascript','company-profile.js':'text/javascript','terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','play-billing.js':'text/javascript','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','field-notes.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
         if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);
       }
       if(url.pathname==='/api/customer/messages'){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,portal.customerMessage(req.headers['x-customer-token'],(await json(req)).message));}
@@ -124,6 +132,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       if(url.pathname==='/api/booking/status'){if(req.method!=='GET')fail(405,'Method not allowed.');return send(200,booking.publicStatus(req.headers['x-booking-token']));}
       if(url.pathname==='/api/booking'){if(req.method==='GET')return send(200,booking.publicView(req.headers['x-booking-token'],url.searchParams.get('date')));if(req.method==='POST')return send(201,booking.request(req.headers['x-booking-token'],await json(req)));fail(405,'Method not allowed.');}
       const session=auth.session(req);if(!session) fail(401,'Sign in to continue.');
+      if(url.pathname==='/api/branche/link-code'&&req.method==='POST')return send(200,branche.issue(session));
       if(req.headers['x-note-company']||req.headers['x-note-owner']){
         if(req.headers['x-note-company']!==session.company_id||req.headers['x-note-owner']!==encodeURIComponent(session.email))fail(409,'Sign in to the original account and business to sync this field note.');
       }
@@ -188,7 +197,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   });
   server.on('listening',()=>reminders.start());
   server.requestTimeout=120000;
-  server.on('close',()=>{reminders.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();analysisPromo.close();});
+  server.on('close',()=>{reminders.close();branche.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();analysisPromo.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
