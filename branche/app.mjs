@@ -1,3 +1,4 @@
+import {mediaSchemas,mediaHandler} from './media.mjs';
 import {randomUUID,randomBytes,createHash,scryptSync,timingSafeEqual} from 'node:crypto';
 import {mkdirSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -12,7 +13,7 @@ export async function openStore({directory='data',databaseUrl=process.env.DATABA
  let query,close;
  if(databaseUrl){const {Pool}=await import('pg');const pool=new Pool({connectionString:databaseUrl,max:3});query=async(sql,params=[])=>{let i=0;return (await pool.query(sql.replace(/\?/g,()=>'$'+(++i)),params)).rows;};close=()=>pool.end();}
  else {if(process.env.VERCEL)fail(503,'The shared test database is not connected yet. Please use the local test for now.');const {DatabaseSync}=await import('node:sqlite');mkdirSync(directory,{recursive:true});const db=new DatabaseSync(join(directory,'branche.sqlite'));db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');query=async(sql,params=[])=>db.prepare(sql).all(...params);close=()=>db.close();}
- const schemas=[
+ const schemas=[...mediaSchemas,
  'CREATE TABLE IF NOT EXISTS branche_posts(id TEXT PRIMARY KEY,uid TEXT NOT NULL,title TEXT NOT NULL,category TEXT NOT NULL,city TEXT NOT NULL,description TEXT NOT NULL,state TEXT NOT NULL,created BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_workspaces(uid TEXT PRIMARY KEY,company TEXT UNIQUE NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,created BIGINT NOT NULL)',
  'CREATE TABLE IF NOT EXISTS branche_users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,role TEXT NOT NULL,salt TEXT NOT NULL,secret TEXT NOT NULL,terms TEXT NOT NULL,created BIGINT NOT NULL)',
@@ -27,12 +28,12 @@ export async function openStore({directory='data',databaseUrl=process.env.DATABA
  for(const schema of schemas)await query(schema);
  return {query,close};
 }
-export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch}={}){
- const q=store.query;
+export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,mediaStorage}={}){
+ const q=store.query; const handleMedia=mediaHandler(q,mediaStorage?{storage:mediaStorage}:{});
  async function limit(key,max,ms){const id=key+':'+Math.floor(now()/ms);const [r]=await q('INSERT INTO branche_limits(id,count,expires) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=branche_limits.count+1 RETURNING count',[id,now()+ms]);if(Number(r.count)>max)fail(429,'Please slow down and try again later.');}
  async function session(req){const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('branche_session='))?.slice(16);if(!token)return null;return (await q('SELECT u.id,u.name,u.role,u.email FROM branche_users u JOIN branche_sessions s ON s.uid=u.id WHERE s.token=? AND s.expires>?',[hash(token),now()]))[0]||null;}
  async function blocked(a,b){return (await q('SELECT uid FROM branche_blocks WHERE (uid=? AND target=?) OR (uid=? AND target=?)',[a,b,b,a])).length>0;}
- async function json(req){if(req.body!==undefined){let b=req.body;try{if(typeof b==='string'||Buffer.isBuffer(b))b=JSON.parse(b.toString());if(!b||Array.isArray(b)||typeof b!=='object')fail(400,'Invalid request.');if(Buffer.byteLength(JSON.stringify(b))>16000)fail(413,'This request is too large.');return b;}catch(e){if(e.status)throw e;fail(400,'Invalid request.');}}let size=0,parts=[];for await(const c of req){size+=c.length;if(size>16000)fail(413,'This request is too large.');parts.push(c);}try{const b=JSON.parse(Buffer.concat(parts));if(!b||Array.isArray(b)||typeof b!=='object')throw Error();return b;}catch{fail(400,'Invalid request.');}}
+ async function json(req){const max=req.url.includes("media-upload")?2900000:16000;if(req.body!==undefined){let b=req.body;try{if(typeof b==='string'||Buffer.isBuffer(b))b=JSON.parse(b.toString());if(!b||Array.isArray(b)||typeof b!=='object')fail(400,'Invalid request.');if(Buffer.byteLength(JSON.stringify(b))>max)fail(413,'This request is too large.');return b;}catch(e){if(e.status)throw e;fail(400,'Invalid request.');}}let size=0,parts=[];for await(const c of req){size+=c.length;if(size>max)fail(413,'This request is too large.');parts.push(c);}try{const b=JSON.parse(Buffer.concat(parts));if(!b||Array.isArray(b)||typeof b!=='object')throw Error();return b;}catch{fail(400,'Invalid request.');}}
  return async(req,res)=>{
  const send=(code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
  try{
@@ -42,6 +43,7 @@ export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch}=
  const write=req.method!=='GET';
  if(write){const origin=req.headers.origin;let expected='http://'+req.headers.host;if(process.env.VERCEL)expected='https://'+req.headers.host;if(origin!==expected)fail(403,'Please use this site to submit changes.');if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'Expected JSON.');}
  const u=await session(req),body=write?await json(req):{};
+ if(await handleMedia({path,req,res,url,u,body,send,limit}))return;
  if(path==='/api/branche/session'&&!write)return send(200,{user:safeUser(u),categories,termsVersion,test:true});
  if(['/api/branche/register','/api/branche/login'].includes(path)&&req.method==='POST'){
  await limit('auth:'+(req.socket?.remoteAddress||'shared'),20,900000);

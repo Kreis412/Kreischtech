@@ -1,0 +1,43 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import sharp from 'sharp';
+import {openStore,createHandler,termsVersion} from '../app.mjs';
+test('uploads are sanitized, owner-controlled, and public only while attached to published content',async()=>{
+ const store=await openStore({directory:mkdtempSync(join(tmpdir(),'branche-media-'))}),files=new Map();
+ const mediaStorage={put:async(p,b)=>{files.set(p,b);return p;},get:async p=>files.get(p),del:async p=>files.delete(p)};
+ const server=createServer(createHandler(store,{mediaStorage}));await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const base='http://127.0.0.1:'+server.address().port;
+ const call=async(path,body,cookie='',method=body?'POST':'GET')=>{const r=await fetch(base+'/api/branche/'+path,{method,headers:{cookie,origin:base,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,body:r.headers.get('content-type')?.includes('json')?await r.json():Buffer.from(await r.arrayBuffer()),cookie:r.headers.get('set-cookie')?.split(';')[0]};};
+ try{
+ const reg=name=>call('register',{name,email:name+'@example.test',password:'media-test-password',role:'contractor',terms:termsVersion});
+ const a=await reg('Owner'),b=await reg('Other');
+ const bytes=await sharp({create:{width:30,height:30,channels:3,background:'#225c44'}}).png().toBuffer();
+ const image='data:image/png;base64,'+bytes.toString('base64');
+ assert.equal((await call('media-upload',{image})).status,401);
+ assert.equal((await call('media-upload',{image:'data:image/svg+xml;base64,PHN2Zz4='},a.cookie)).status,400);
+ const up=await call('media-upload',{image},a.cookie);assert.equal(up.status,201);
+ const id=up.body.id;assert.equal((await call('media-file?id='+id)).status,404);
+ assert.equal((await sharp((await call('media-file?id='+id,null,a.cookie)).body).metadata()).format,'webp');
+ const profile={name:'Media test',contact:'Owner',category:'Carpentry',city:'Mentor',region:'Ohio',description:'Test',services:'Decks',published:true};
+ await call('profile',profile,a.cookie,'PUT');
+ const config={kind:'profile',target:a.body.user.id,logo:id,photos:[id],link:'https://example.com',video:'https://youtu.be/test'};
+ assert.equal((await call('media-config',config,b.cookie,'PUT')).status,404);
+ assert.equal((await call('media-config',{...config,link:'javascript:alert(1)'},a.cookie,'PUT')).status,400);
+ assert.equal((await call('media-config',{...config,video:'https://evil.example/youtube.com'},a.cookie,'PUT')).status,400);
+ assert.equal((await call('media-config',config,a.cookie,'PUT')).status,200);
+ assert.equal((await call('media-file?id='+id)).status,200);
+ assert.equal((await call('media-upload',{id},b.cookie,'DELETE')).status,404);
+ assert.equal((await call('media-upload',{id},a.cookie,'DELETE')).status,409);
+ await call('profile',{...profile,published:false},a.cookie,'PUT');
+ assert.equal((await call('media-file?id='+id)).status,404);
+ assert.equal((await call('media')).body.configs.length,0);
+ assert.equal((await call('media',null,a.cookie)).body.configs.length,1);
+ await call('media-config',{...config,photos:[],logo:''},a.cookie,'PUT');
+ assert.equal((await call('media-upload',{id},a.cookie,'DELETE')).status,200);
+ assert.equal(files.size,0);
+ }finally{await new Promise(r=>server.close(r));await store.close();}
+});
