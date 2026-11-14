@@ -1,0 +1,65 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {start} from '../server.mjs';
+import {termsVersion} from '../app.mjs';
+
+test('community workflow preserves access controls, blocking and saved records',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'branche-test-'));
+ let app=await start({directory,port:0});
+ let base='http://127.0.0.1:'+app.server.address().port;
+ const call=async(path,body,cookie='',method=body?'POST':'GET',origin=base)=>{
+  const response=await fetch(base+'/api/branche/'+path,{method,headers:{cookie,origin,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};
+ };
+ try{
+  const register=(name,role)=>call('register',{name,email:name+'@example.test',password:'test-only-passphrase',role,terms:termsVersion});
+  const customer=await register('Customer','customer'),contractor=await register('Contractor','contractor'),stranger=await register('Stranger','customer');
+  assert.equal(customer.status,200);assert.equal(contractor.status,200);assert.equal(stranger.status,200);
+  assert.equal((await call('session',null,customer.cookie)).data.user.id,customer.data.user.id);
+  assert.equal((await call('jobs',{title:'x'},'', 'POST')).status,401);
+  assert.equal((await call('jobs',{title:'x'},customer.cookie,'POST','https://attacker.invalid')).status,403);
+  const profile={name:'Test Carpentry',contact:'Test Owner',category:'Carpentry',city:'Mentor',region:'Lake County, Ohio',description:'Private test business',services:'Porches',published:true};
+  assert.equal((await call('profile',profile,contractor.cookie,'PUT')).status,200);
+  assert.equal((await call('profile',profile,customer.cookie,'PUT')).status,403);
+  assert.equal((await call('profiles')).data.profiles.length,1);
+  assert.equal(JSON.stringify((await call('profiles')).data).includes('@example.test'),false);
+  const postBody={title:'A project update',category:'Carpentry',city:'Mentor',description:'Text-only test update'};
+  assert.equal((await call('posts',postBody)).status,401);
+  assert.equal((await call('posts',postBody,contractor.cookie,'POST','https://attacker.invalid')).status,403);
+  const post=await call('posts',postBody,contractor.cookie);assert.equal(post.status,201);
+  assert.equal((await call('posts')).data.posts[0].name,'Test Carpentry');
+  assert.equal(JSON.stringify((await call('posts')).data).includes('@example.test'),false);
+  assert.equal((await call('posts',{id:post.data.id},stranger.cookie,'DELETE')).status,404);
+  assert.equal((await call('report',{target:post.data.id,kind:'post',reason:'Test only'},customer.cookie)).status,201);
+  const job=await call('jobs',{title:'Repair porch',category:'Carpentry',city:'Mentor',description:'Test request only',timing:'Next month'},customer.cookie);
+  assert.equal(job.status,201);
+  assert.equal((await call('job-state',{id:job.data.id,state:'closed'},stranger.cookie,'PUT')).status,404);
+  const thread=await call('threads',{job:job.data.id,message:'I can discuss this test job.'},contractor.cookie);
+  assert.equal(thread.status,201);
+  const id=thread.data.id;
+  assert.equal((await call('messages?thread='+id,null,stranger.cookie)).status,404);
+  assert.equal((await call('messages',{thread:id,message:'Unauthorized'},stranger.cookie)).status,404);
+  assert.equal((await call('messages',{thread:id,message:'Thank you'},customer.cookie)).status,201);
+  assert.equal((await call('messages?thread='+id,null,customer.cookie)).data.messages.length,2);
+  assert.equal((await call('report',{target:id,kind:'conversation',reason:'Test report'},customer.cookie)).status,201);
+  assert.equal((await call('report',{target:id,kind:'conversation',reason:'Not mine'},stranger.cookie)).status,404);
+  assert.equal((await call('block',{target:contractor.data.user.id},customer.cookie)).status,200);
+  assert.equal((await call('messages',{thread:id,message:'Blocked'},contractor.cookie)).status,403);
+  assert.equal((await call('posts',null,customer.cookie)).data.posts.length,0);
+  assert.equal((await call('threads',{job:job.data.id,message:'Blocked new conversation'},contractor.cookie)).status,403);
+  assert.equal((await call('job-state',{id:job.data.id,state:'closed'},customer.cookie,'PUT')).status,200);
+  assert.equal((await call('jobs')).data.jobs.length,0);
+  await app.close();app=await start({directory,port:0});base='http://127.0.0.1:'+app.server.address().port;
+  assert.equal((await call('profiles')).data.profiles.length,1);
+  assert.equal((await call('posts')).data.posts.length,1);
+  assert.equal((await call('posts',{id:post.data.id},contractor.cookie,'DELETE')).status,200);
+  assert.equal((await call('posts')).data.posts.length,0);
+  assert.equal((await call('my-jobs',null,customer.cookie)).data.jobs[0].state,'closed');
+  assert.equal((await call('messages?thread='+id,null,customer.cookie)).data.blocked,true);
+  assert.equal((await call('logout',{},customer.cookie)).status,200);
+  assert.equal((await call('session',null,customer.cookie)).data.user,null);
+ }finally{await app.close();}
+});

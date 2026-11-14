@@ -1,0 +1,3 @@
+import {openStore,createHandler} from '../app.mjs';
+let handler;
+export default async function api(req,res){try{if(!process.env.DATABASE_URL){res.statusCode=503;res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({error:'The shared test database is not connected yet. No account or message has been saved.'}));}handler ||= openStore().then(createHandler).catch(e=>{handler=null;throw e;});await (await handler)(req,res);}catch{res.statusCode=503;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({error:'Branche is temporarily unavailable. Please try again later.'}));}}

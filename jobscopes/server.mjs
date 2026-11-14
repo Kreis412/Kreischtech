@@ -39,13 +39,14 @@ async function largeJson(req,limit=8*1024*1024) {
   try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))fail(400,'Expected an object.');return b;}
   catch(e){if(e.status)throw e;fail(400,'Invalid photo request.');}
 }
-export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},connectOptions={},playOptions={},cloudRequest=fetch}={}) {
+export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),publicOrigin='',registrationCode=null,billingOptions={},connectOptions={},playOptions={},cloudRequest=fetch,communityOptions=null}={}) {
   mkdirSync(dataDir,{recursive:true});const policy=accessPolicy(publicOrigin);let billing,play;
   const profileOffer=foundingOffer(dataDir);mkdirSync(join(dataDir,'stripe-live'),{recursive:true});const profileCredits=billingStore(join(dataDir,'stripe-live'));const analysisPromo=analysisPromos(dataDir,{credits:profileCredits,code:process.env.CONTRACTORSIGHT_ANALYSIS_PROMO_CODE,maxRedemptions:Number(process.env.CONTRACTORSIGHT_ANALYSIS_PROMO_MAX_REDEMPTIONS||5)});
   const weather=weatherService();
   const portal=customerPortal(dataDir);
   const booking=appointments(dataDir);
   const auth=accounts(dataDir,{secureCookies:policy.hosted,registrationCode:policy.hosted?registrationCode:null,companyOfferStatus:()=>profileOffer.status(),onCompanyCreated:(company,user)=>profileOffer.award({company,owner:user,reference:'business-profile:'+company,grant:details=>profileCredits.grant(details)}),seatLimit:company=>{const stripePaid=billing?.hasPaidCompany(company),playPaid=play?.hasPaidCompany(company);return stripePaid||playPaid?Math.max(stripePaid?(billing.seatLimit?.(company)??1):1,playPaid?play.seatLimit(company):1):Infinity;}}),workspaces=new Map();
+  const community=communityOptions?import('../branche/unified.mjs').then(({unifiedCommunity})=>unifiedCommunity(auth,{directory:join(dataDir,'community'),publicOrigin,...communityOptions})):null;
   const branche=brancheLink(dataDir,{member:auth.isOwner});
   const reminders=pushReminders(dataDir,{member:auth.hasMember});
   const live=process.env.STRIPE_LIVE_BILLING==='1';
@@ -102,6 +103,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
       policy.guard(req);
       if(!policy.hosted && req.headers.origin && req.headers.origin!==`http://${req.headers.host}`) fail(403,'Cross-origin requests are blocked.');
       if(req.headers['sec-fetch-site']==='cross-site' && !(policy.hosted && isPublicEntryNavigation(req))) fail(403,'Cross-site requests are blocked.');
+      if(community&&await (await community).handle(req,res))return;
       if(await auth.handle(req,url,json,send,res)) return;
       if(url.pathname==='/api/demo/trial'&&req.method==='GET'){
         const trial=guestTrials.status(req);res.setHeader('Set-Cookie',`cs_demo=${trial.cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${policy.hosted?'; Secure':''}`);
@@ -119,7 +121,8 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(url.pathname==='/.well-known/assetlinks.json') return send(200,JSON.parse(readFileSync(join(ROOT,'public/.well-known/assetlinks.json'),'utf8')));
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
         const files={'branche-link.js':'text/javascript','scan-media.js':'text/javascript','settings-navigation.js':'text/javascript','analytics.js':'text/javascript','analytics-config.js':'text/javascript','notifications.js':'text/javascript','daily-checkin.js':'text/javascript','home.js':'text/javascript','project-payments.js':'text/javascript','calculators.js':'text/javascript','customer.html':'text/html','customer.js':'text/javascript','customer-admin.js':'text/javascript','company-profile.js':'text/javascript','terms.html':'text/html','privacy.html':'text/html','refunds.html':'text/html','play-billing.js':'text/javascript','billing.js':'text/javascript','api.js':'text/javascript','manifest.webmanifest':'application/manifest+json','phone.js':'text/javascript','sw.js':'text/javascript','offline.html':'text/html','app-icon-192.png':'image/png','app-icon-512.png':'image/png','index.html':'text/html','photo-queue.js':'text/javascript','field-notes.js':'text/javascript','app.js':'text/javascript','measurements.js':'text/javascript','help.js':'text/javascript','currency.js':'text/javascript','equipment.js':'text/javascript','joe.js':'text/javascript','operations.js':'text/javascript','accounts.js':'text/javascript','materials.js':'text/javascript','company.js':'text/javascript','security.js':'text/javascript','style.css':'text/css','icon.svg':'image/svg+xml'};
-        if(Object.hasOwn(files,file)) return send(200,readFileSync(join(ROOT,'public',file)),`${files[file]}; charset=utf-8`);
+        if(community&&file==='branche-link.js')return send(200,"export async function brancheLinkView(target){target.innerHTML='<section class=\"panel\"><h1>Your Branche community</h1><p>Your community and business tools now use this account. No connection code or second sign-in is needed.</p><a class=\"button primary\" href=\"/community/\">Open community</a><a class=\"button\" href=\"/community/#businesses\">Find businesses</a></section>';}",'text/javascript');
+        if(Object.hasOwn(files,file)){let content=readFileSync(join(ROOT,'public',file));if(community&&file==='index.html')content=content.toString().replace(/https:\/\/branche-test[^\"]+/g,'/community/').replace('Branche community (test)','Branche community');return send(200,content,`${files[file]}; charset=utf-8`);}
       }
       if(url.pathname==='/api/customer/messages'){if(req.method!=='POST')fail(405,'Method not allowed.');return send(200,portal.customerMessage(req.headers['x-customer-token'],(await json(req)).message));}
       if(url.pathname==='/api/customer' || url.pathname.startsWith('/api/customer/photos/')){
@@ -197,13 +200,13 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   });
   server.on('listening',()=>reminders.start());
   server.requestTimeout=120000;
-  server.on('close',()=>{reminders.close();branche.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();analysisPromo.close();});
+  server.on('close',()=>{community?.then(c=>c.close()).catch(()=>{});reminders.close();branche.close();for(const workspace of workspaces.values())workspace.emit('close');auth.close();portal.close();booking.close();guestTrials.close();cloud?.close();paidCloud?.close();budget?.close();billing.close();connect.close();play.close();profileOffer.close();profileCredits.close();analysisPromo.close();});
   return server;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.argv.includes('--lan')){console.error('This preview requires localhost. Hosted HTTPS access is not configured.');process.exit(1);}
   const publicOrigin=process.env.PUBLIC_ORIGIN||(process.env.RENDER==='true'?process.env.RENDER_EXTERNAL_URL:'')||'';
-  const server=createProduct({publicOrigin,registrationCode:process.env.REGISTRATION_MODE==='private'?(process.env.PILOT_REGISTRATION_CODE||''):null}),port=Number(process.env.PORT||3200);
+  const server=createProduct({publicOrigin,communityOptions:process.env.BRANCHE_UNIFIED==='1'?{databaseUrl:process.env.BRANCHE_DATABASE_URL||''}:null,registrationCode:process.env.REGISTRATION_MODE==='private'?(process.env.PILOT_REGISTRATION_CODE||''):null}),port=Number(process.env.PORT||3200);
   server.listen(port,publicOrigin?'0.0.0.0':'127.0.0.1',()=>console.log(`ContractorSight company preview: http://localhost:${port}`));
   server.on('error',e=>{console.error(e.message);process.exitCode=1;server.close();});
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{server.close();server.closeIdleConnections();});
