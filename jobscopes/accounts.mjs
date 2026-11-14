@@ -10,6 +10,7 @@ const email=s=>typeof s==='string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.
 const password=s=>typeof s==='string' && s.length>=16 && s.length<=256 ? s : fail(400,'Use a password of 16–256 characters.');
 const kdf={N:32768,r:8,p:1,maxmem:64*1024*1024};
 const SESSION_MS=8*60*60*1000;
+const REMEMBERED_SESSION_MS=30*24*60*60*1000;
 export function accounts(dataDir,{secureCookies=false,registrationCode=null,seatLimit=()=>Infinity,onCompanyCreated=null,companyOfferStatus=null}={}) {
   const db=new DatabaseSync(join(dataDir,'accounts.sqlite'));
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
@@ -46,15 +47,16 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
   function cookie(req) {return (req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('jobscopes_session='))?.slice(18)||'';}
   function session(req) {
     db.prepare('DELETE FROM sessions WHERE expires<=?').run(Date.now());
-    return db.prepare(`SELECT s.token_hash,s.user_id,s.company_id,m.role,u.name,u.email,c.name company_name
+    return db.prepare(`SELECT s.token_hash,s.user_id,s.company_id,s.expires,m.role,u.name,u.email,c.name company_name
       FROM sessions s JOIN users u ON u.id=s.user_id JOIN companies c ON c.id=s.company_id
       JOIN memberships m ON m.user_id=s.user_id AND m.company_id=s.company_id WHERE s.token_hash=?`).get(hash(cookie(req)));
   }
-  function issue(req,res,user,company) {
+  function issue(req,res,user,company,remember=false) {
     db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(cookie(req)));
     const token=randomBytes(32).toString('base64url');
-    db.prepare('INSERT INTO sessions VALUES(?,?,?,?)').run(hash(token),user,company,Date.now()+SESSION_MS);
-    res.setHeader('Set-Cookie',`jobscopes_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS/1000}${secureCookies?'; Secure':''}`);
+    const duration=remember?REMEMBERED_SESSION_MS:SESSION_MS;
+    db.prepare('INSERT INTO sessions VALUES(?,?,?,?)').run(hash(token),user,company,Date.now()+duration);
+    res.setHeader('Set-Cookie',`jobscopes_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${duration/1000}${secureCookies?'; Secure':''}`);
   }
   const requireOwner=s=>{if(s.role!=='Owner') fail(403,'Only the company owner can manage access.');};
   async function handle(req,url,json,send,res) {
@@ -93,7 +95,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
           db.prepare('INSERT INTO companies VALUES(?,?)').run(companyId,company);
           db.prepare('INSERT INTO memberships VALUES(?,?,?)').run(id,companyId,'Owner');if(typeof onCompanyCreated==='function')db.prepare('INSERT INTO company_creation_rewards(company_id,user_id) VALUES(?,?)').run(companyId,id);audit(companyId,id,'company.created');
         });}finally{key.fill(0);}
-        const welcome=await processCompanyReward(companyId,id);issue(req,res,id,companyId);send(201,{saved:true,photo_analysis_bonus:welcome?.granted===true});return true;
+        const welcome=await processCompanyReward(companyId,id);issue(req,res,id,companyId,b.remember===true);send(201,{saved:true,photo_analysis_bonus:welcome?.granted===true});return true;
       }
       const user=db.prepare('SELECT * FROM users WHERE email=?').get(mail);
       const key=await derive(pass,user?.salt||'00000000000000000000000000000000',32,kdf);
@@ -102,7 +104,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
       const membership=db.prepare('SELECT company_id FROM memberships WHERE user_id=? ORDER BY company_id LIMIT 1').get(user.id);
       if(!membership) fail(403,'This account has no active company membership.');
       await processCompanyReward(membership.company_id,user.id);
-      issue(req,res,user.id,membership.company_id);audit(membership.company_id,user.id,'session.login');send(200,{saved:true});return true;
+      issue(req,res,user.id,membership.company_id,b.remember===true);audit(membership.company_id,user.id,'session.login');send(200,{saved:true});return true;
     }
     const s=session(req);if(!s) fail(401,'Sign in to continue.');
     if(req.method==='POST' && path==='/api/account/logout') {
@@ -110,7 +112,7 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
     }
     if(req.method==='POST' && path==='/api/account/switch') {
       const b=await json(req);if(!db.prepare('SELECT 1 FROM memberships WHERE user_id=? AND company_id=?').get(s.user_id,String(b.company_id))) fail(403,'No access to this company.');
-      issue(req,res,s.user_id,b.company_id);send(200,{saved:true});return true;
+      issue(req,res,s.user_id,b.company_id,s.expires-Date.now()>SESSION_MS);send(200,{saved:true});return true;
     }
     if(req.method==='POST' && path==='/api/account/companies') {
       const b=await json(req),name=label(b.name),id=randomUUID();

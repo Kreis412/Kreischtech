@@ -92,4 +92,19 @@ test('authenticated companies: isolation, roles, invitations, sessions and persi
       await b.request('/api/projects','GET',undefined,401);
     } finally {db.close();}
   });
+  await t.test('stay signed in is opt-in and sign out revokes it',async()=>{
+    const visitor=client(),email='remember@example.test';
+    const ui=await (await fetch(base+'/accounts.js')).text();
+    assert.match(ui,/Create a free account/);
+    assert.match(ui,/Stay signed in for 30 days on this device/);
+    await visitor.request('/api/account/register','POST',{email,password,name:'Remember Test',company:'Remember Co'},201);
+    assert.match(visitor.lastCookie,/Max-Age=28800/);
+    await visitor.request('/api/account/logout','POST',{});
+    await visitor.request('/api/account/login','POST',{email,password,remember:true});
+    assert.match(visitor.lastCookie,/Max-Age=2592000/);
+    assert.equal((await visitor.request('/api/account/session')).user.email,email);
+    await visitor.request('/api/account/logout','POST',{});
+    await visitor.request('/api/account/session');
+    assert.equal((await visitor.request('/api/account/session')).user,null);
+  });
 });
