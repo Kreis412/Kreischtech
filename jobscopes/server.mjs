@@ -50,7 +50,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
   const branche=brancheLink(dataDir,{member:auth.isOwner});
   const reminders=pushReminders(dataDir,{member:auth.hasMember});
   const live=process.env.STRIPE_LIVE_BILLING==='1';
-  billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,pro:process.env.STRIPE_PRO_PRICE_ID,team:process.env.STRIPE_TEAM_PRICE_ID,solo_annual:process.env.STRIPE_SOLO_ANNUAL_PRICE_ID,pro_annual:process.env.STRIPE_PRO_ANNUAL_PRICE_ID,team_annual:process.env.STRIPE_TEAM_ANNUAL_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID}}:{}),...billingOptions,memberCount:auth.memberCount,otherSubscription:company=>play?.hasSubscription(company)??false});
+  billing=stripeBilling({dataDir,origin:publicOrigin,secretKey:process.env.STRIPE_SECRET_KEY,webhookSecret:process.env.STRIPE_WEBHOOK_SECRET,enabled:live||process.env.STRIPE_TEST_BILLING==='1',mode:live?'live':'test',...(live?{prices:{solo:process.env.STRIPE_SOLO_PRICE_ID,pro:process.env.STRIPE_PRO_PRICE_ID,team:process.env.STRIPE_TEAM_PRICE_ID,solo_annual:process.env.STRIPE_SOLO_ANNUAL_PRICE_ID,pro_annual:process.env.STRIPE_PRO_ANNUAL_PRICE_ID,team_annual:process.env.STRIPE_TEAM_ANNUAL_PRICE_ID,analysis_1:process.env.STRIPE_ANALYSIS_1_PRICE_ID,analysis_5:process.env.STRIPE_ANALYSIS_5_PRICE_ID,analysis_12:process.env.STRIPE_ANALYSIS_12_PRICE_ID},privatePackOffer:{companyId:'74b5a8c7-b1ca-4ea9-a2ae-c54a325733e0',couponId:'cs_robert_analysis12_90'}}:{}),...billingOptions,memberCount:auth.memberCount,otherSubscription:company=>play?.hasSubscription(company)??false});
   const connect=stripeConnect({dataDir,origin:publicOrigin,enabled:process.env.STRIPE_CONNECT_ENABLED==='1',mode:process.env.STRIPE_CONNECT_MODE||'sandbox',allowLive:process.env.STRIPE_CONNECT_ALLOW_LIVE==='1',secretKey:process.env.STRIPE_CONNECT_SECRET_KEY,webhookSecret:process.env.STRIPE_CONNECT_WEBHOOK_SECRET,accountWebhookSecret:process.env.STRIPE_CONNECT_ACCOUNT_WEBHOOK_SECRET,...connectOptions});
   let playClient;
   try{if(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON)playClient=googlePlayClient(JSON.parse(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON));}catch{console.error('Google Play credentials are invalid; purchases remain disabled.');}
@@ -178,7 +178,7 @@ export function createProduct({dataDir=process.env.DATA_DIR||join(ROOT,'data'),p
         if(!billing.ready)fail(503,'Billing is not configured.');
         if(req.method!=='POST')fail(405,'Method not allowed.');
         const b=await json(req);
-        if(url.pathname==='/api/billing/checkout')return send(200,await billing.checkout(session,b.plan,b.terms_version));
+        if(url.pathname==='/api/billing/checkout')return send(200,await billing.checkout(session,b.plan,b.terms_version,b.offer));
         if(url.pathname==='/api/billing/change/preview')return send(200,await billing.previewChange(session,b.plan));
         if(url.pathname==='/api/billing/change/confirm')return send(200,await billing.confirmChange(session,b.quote_id));
         if(url.pathname==='/api/billing/change/cancel')return send(200,await billing.cancelChange(session));

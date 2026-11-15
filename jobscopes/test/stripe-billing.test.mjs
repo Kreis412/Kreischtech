@@ -11,20 +11,20 @@ import {stripeBilling,TEST_PRICES} from '../stripe-billing.mjs';
 import {createProduct} from '../server.mjs';
 const key='sk_test_fake_for_unit_tests',secret='whsec_fake_for_unit_tests';
 const owner={user_id:'userA',company_id:'companyA',role:'Owner'},other={company_id:'companyB',role:'Owner'};
-function fixture(t,live=false){
+function fixture(t,live=false,offer=false){
  const prices=live?{solo:'price_live_solo',pro:'price_live_pro',team:'price_live_team',solo_annual:'price_live_solo_annual',pro_annual:'price_live_pro_annual',team_annual:'price_live_team_annual',analysis_1:'price_live_analysis_1',analysis_5:'price_live_analysis_5',analysis_12:'price_live_analysis_12'}:TEST_PRICES;
  const dir=mkdtempSync(join(tmpdir(),'cs-stripe-')),sdk=new Stripe(key),sessions=new Map(),subs=new Map(),invoices=new Map();let creates=0,wrongPrice=false;
- const client={webhooks:sdk.webhooks,prices:{retrieve:async price=>{const plan=Object.keys(prices).find(k=>prices[k]===price);return {id:price,livemode:live,active:true,currency:'usd',billing_scheme:'per_unit',unit_amount:wrongPrice?1:{solo:1900,pro:3900,team:7900,solo_annual:19000,pro_annual:39000,team_annual:79000,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan],type:(plan==='pack'||plan.startsWith('analysis_'))?'one_time':'recurring',recurring:(plan==='pack'||plan.startsWith('analysis_'))?null:{interval:plan.endsWith('_annual')?'year':'month',interval_count:1}};}},
-  checkout:{sessions:{create:async params=>{creates++;const sid=(live?'cs_live_':'cs_test_')+creates;const value={id:sid,livemode:live,status:'open',url:'https://checkout.stripe.com/c/pay/'+sid,created:Math.floor(Date.now()/1000),...params,line_items:{data:[{price:{id:params.line_items[0].price},quantity:1}],has_more:false}};sessions.set(sid,value);return value;},retrieve:async sid=>structuredClone(sessions.get(sid))}},
+ const client={webhooks:sdk.webhooks,prices:{retrieve:async price=>{const plan=Object.keys(prices).find(k=>prices[k]===price);return {id:price,product:plan==='analysis_12'?'prod_analysis_12':'prod_other',livemode:live,active:true,currency:'usd',billing_scheme:'per_unit',unit_amount:wrongPrice?1:{solo:1900,pro:3900,team:7900,solo_annual:19000,pro_annual:39000,team_annual:79000,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan],type:(plan==='pack'||plan.startsWith('analysis_'))?'one_time':'recurring',recurring:(plan==='pack'||plan.startsWith('analysis_'))?null:{interval:plan.endsWith('_annual')?'year':'month',interval_count:1}};}},coupons:{retrieve:async()=>({valid:true,percent_off:90,duration:'once',max_redemptions:1,applies_to:{products:['prod_analysis_12']}})},
+  checkout:{sessions:{create:async params=>{creates++;const sid=(live?'cs_live_':'cs_test_')+creates;const value={id:sid,livemode:live,status:'open',url:'https://checkout.stripe.com/c/pay/'+sid,created:Math.floor(Date.now()/1000),amount_total:params.discounts?110:1099,...params,line_items:{data:[{price:{id:params.line_items[0].price},quantity:1}],has_more:false}};sessions.set(sid,value);return value;},retrieve:async sid=>structuredClone(sessions.get(sid))}},
   subscriptions:{retrieve:async sid=>structuredClone(subs.get(sid)),update:async(sid,params)=>Object.assign(subs.get(sid),params)},invoices:{retrieve:async iid=>structuredClone(invoices.get(iid))}};
  const charges=new Map(),intents=new Map(),disputes=new Map();
  client.charges={retrieve:async cid=>structuredClone(charges.get(cid))};
  client.paymentIntents={retrieve:async pid=>structuredClone(intents.get(pid))};
  client.disputes={list:async({charge})=>({has_more:false,data:structuredClone(disputes.get(charge)||[])})};
  client.invoicePayments={list:async({invoice})=>{const inv=invoices.get(invoice),pid=inv.payment_intent;return {has_more:false,data:[{invoice,livemode:live,status:'paid',currency:'usd',amount_paid:inv.amount_paid,payment:{type:'payment_intent',payment_intent:pid}}]};}};
- const options={dataDir:dir,origin:'https://example.test',secretKey:live?'sk_live_fake_for_unit_tests':key,mode:live?'live':'test',prices,webhookSecret:secret,enabled:true,client};let billing=stripeBilling(options);
+ const options={dataDir:dir,origin:'https://example.test',secretKey:live?'sk_live_fake_for_unit_tests':key,mode:live?'live':'test',prices,webhookSecret:secret,enabled:true,client,...(offer?{privatePackOffer:{companyId:owner.company_id,couponId:'coupon_private_pack_90'}}:{})};let billing=stripeBilling(options);
  t.after(()=>{billing.close();rmSync(dir,{recursive:true,force:true});});
- function pay(sid,plan){const s=sessions.get(sid);Object.assign(s,{status:'complete',payment_status:'paid',currency:'usd',amount_total:{solo:1900,pro:3900,team:7900,solo_annual:19000,pro_annual:39000,team_annual:79000,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan]});if((plan!=='pack'&&!plan.startsWith('analysis_'))){
+ function pay(sid,plan){const s=sessions.get(sid);Object.assign(s,{status:'complete',payment_status:'paid',currency:'usd',amount_total:s.discounts?110:{solo:1900,pro:3900,team:7900,solo_annual:19000,pro_annual:39000,team_annual:79000,crew:3900,pack:1000,analysis_1:99,analysis_5:499,analysis_12:1099}[plan]});if((plan!=='pack'&&!plan.startsWith('analysis_'))){
   s.subscription='sub_'+sid;s.invoice='in_'+sid;const end=Math.floor(Date.now()/1000)+30*86400;
   subs.set(s.subscription,{id:s.subscription,livemode:live,metadata:s.metadata,status:'active',items:{data:[{price:{id:prices[plan]},quantity:1,current_period_end:end}]},cancel_at_period_end:false});
   invoices.set(s.invoice,{id:s.invoice,livemode:live,status:'paid',currency:'usd',amount_paid:s.amount_total,billing_reason:'subscription_create',parent:{subscription_details:{subscription:s.subscription}},lines:{has_more:false,data:[{pricing:{price_details:{price:prices[plan]}},quantity:1,period:{end}}]}});
@@ -57,6 +57,25 @@ test('live Solo grants separate saved-result allowances, refunds both and reject
  assert.equal(f.billing.balance('companyA'),0);assert.equal(f.billing.balance('companyA','joe'),0);
  f.restart();assert.equal(f.billing.hasPaidCompany('companyA'),true);assert.equal(f.billing.balance('companyA'),0);
  await assert.rejects(f.event('ignored',{},'evt_test_in_live',{livemode:false}),{status:400});
+});
+
+test('private 12-analysis pack is one-time, account-bound, and grants exactly 12 credits',async t=>{
+ const f=fixture(t,true,true);
+ assert.deepEqual(f.billing.status(owner).private_pack_offer,{price_cents:110,analyses:12});
+ assert.equal(f.billing.status(other).private_pack_offer,null);
+ await assert.rejects(f.billing.checkout(other,'analysis_12','2026-11-09','private-pack-90'),{status:403});
+ await assert.rejects(f.billing.checkout(owner,'analysis_5','2026-11-09','private-pack-90'),{status:403});
+ await f.billing.checkout(owner,'analysis_12','2026-11-09','private-pack-90');
+ assert.deepEqual(f.sessions.get('cs_live_1').discounts,[{coupon:'coupon_private_pack_90'}]);
+ const s=f.pay('cs_live_1','analysis_12');
+ await f.billing.confirm(owner,s.id);
+ assert.equal(f.billing.balance(owner.company_id),12);
+ assert.equal(f.billing.balance(owner.company_id,'joe'),0);
+ assert.equal(f.billing.status(owner).private_pack_offer,null);
+ await assert.rejects(f.billing.checkout(owner,'analysis_12','2026-11-09','private-pack-90'),{status:409});
+ f.restart();
+ assert.equal(f.billing.balance(owner.company_id),12);
+ assert.equal(f.billing.status(owner).private_pack_offer,null);
 });
 
 test('test checkout enforces owner, server prices, deduplication and company binding',async t=>{
