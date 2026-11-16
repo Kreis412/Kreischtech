@@ -1,4 +1,5 @@
 import {operationsSchema,operations} from './operations.mjs';
+import {US_STATES,stateCode} from './us-states.mjs';
 import {recoverySchema,recoveryHandler} from './recovery.mjs';
 import {mediaSchemas,mediaHandler} from './media.mjs';
 import {randomUUID,randomBytes,createHash,scryptSync,timingSafeEqual} from 'node:crypto';
@@ -29,6 +30,9 @@ export async function openStore({directory='data',databaseUrl=process.env.DATABA
  'CREATE TABLE IF NOT EXISTS branche_reviews(id TEXT PRIMARY KEY,uid TEXT NOT NULL,contractor TEXT NOT NULL,rating INTEGER NOT NULL,body TEXT NOT NULL,created BIGINT NOT NULL,updated BIGINT NOT NULL,UNIQUE(uid,contractor))',
  'CREATE TABLE IF NOT EXISTS branche_limits(id TEXT PRIMARY KEY,count INTEGER NOT NULL,expires BIGINT NOT NULL)'];
  for(const schema of schemas)await query(schema);
+ for(const table of ['branche_posts','branche_profiles','branche_jobs']){
+  try{await query(`ALTER TABLE ${table} ADD COLUMN state_code TEXT NOT NULL DEFAULT 'OH'`);}catch(error){if(!/duplicate column|already exists/i.test(error.message))throw error;}
+ }
  return {query,close,transaction};
 }
 export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,mediaStorage,recoveryOptions,operationsOptions,integration,publicOrigin=''}={}){
@@ -51,7 +55,7 @@ export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,m
  if(u&&write&&path!=='/api/branche/logout'&&(await q('SELECT uid FROM branche_suspensions WHERE uid=?',[u.id])).length)fail(403,'This account is suspended. Contact kreischtech@gmail.com.');
  if(await handleRecovery({path,req,body,send,limit}))return;
  if(await handleMedia({path,req,res,url,u,body,send,limit}))return;
- if(path==='/api/branche/session'&&!write)return send(200,{user:safeUser(u),operator:ops.isAdmin(u),categories,termsVersion,test:true,unified:Boolean(integration)});
+ if(path==='/api/branche/session'&&!write)return send(200,{user:safeUser(u),operator:ops.isAdmin(u),categories,states:US_STATES,termsVersion,test:true,unified:Boolean(integration)});
  if(['/api/branche/register','/api/branche/login'].includes(path)&&req.method==='POST'){
  await limit('auth:'+(req.socket?.remoteAddress||'shared'),20,900000);
  const email=text(body.email,254).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Enter a valid email.');
@@ -60,10 +64,11 @@ export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,m
  else{user=(await q('SELECT * FROM branche_users WHERE email=?',[email]))[0];const candidate=scryptSync(pass,user?.salt||'missing-user',32);if(!timingSafeEqual(candidate,Buffer.from(user?.secret||'00'.repeat(32),'hex')))fail(401,'Email or password is incorrect.');}
  const token=randomBytes(32).toString('hex');await q('INSERT INTO branche_sessions VALUES(?,?,?)',[hash(token),user.id,now()+86400000]);res.setHeader('Set-Cookie',`branche_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.VERCEL?'; Secure':''}`);return send(200,{user:safeUser(user),operator:ops.isAdmin(user)});
  }
- if(path==='/api/branche/profiles'&&!write){const rows=await q('SELECT uid,name,contact,category,city,region,description,services,license,issuer,insurance FROM branche_profiles WHERE published=1 ORDER BY updated DESC LIMIT 200');return send(200,{profiles:rows});}
+ if(path==='/api/branche/profiles'&&!write){const state=url.searchParams.get('state');const rows=await q('SELECT uid,name,contact,category,city,state_code,region,description,services,license,issuer,insurance FROM branche_profiles WHERE published=1'+(state?' AND state_code=?':'')+' ORDER BY updated DESC LIMIT 200',state?[stateCode(state)]:[]);return send(200,{profiles:rows});}
+ if(path==='/api/branche/public-profile'&&!write){const uid=text(url.searchParams.get('uid'),100);const profile=(await q('SELECT uid,name,contact,category,city,state_code,region,description,services,license,issuer,insurance FROM branche_profiles WHERE uid=? AND published=1',[uid]))[0];if(!profile)fail(404,'Business page not found.');return send(200,{profile});}
  if(path==='/api/branche/reviews'&&!write){const contractor=url.searchParams.get('contractor');if(!contractor)fail(400,'Choose a business.');const profile=(await q('SELECT uid FROM branche_profiles WHERE uid=? AND published=1',[contractor]))[0];if(!profile)fail(404,'Business page not found.');const rows=await q('SELECT r.id,r.uid,r.rating,r.body,r.created,r.updated,u.name FROM branche_reviews r JOIN branche_users u ON u.id=r.uid WHERE r.contractor=? ORDER BY r.updated DESC LIMIT 100',[contractor]);return send(200,{reviews:rows.map(r=>({...r,name:r.name.split(' ')[0]}))});}
- if(path==='/api/branche/jobs'&&!write){const rows=await q("SELECT j.id,j.uid,j.title,j.category,j.city,j.description,j.timing,j.budget,j.state,j.created,u.name FROM branche_jobs j JOIN branche_users u ON u.id=j.uid WHERE j.state='open' ORDER BY j.created DESC LIMIT 200");return send(200,{jobs:rows.map(r=>({...r,name:r.name.split(' ')[0]}))});}
- if(path==='/api/branche/posts'&&!write){const rows=await q("SELECT p.id,p.uid,p.title,p.category,p.city,p.description,p.created,u.name,b.name business,b.published FROM branche_posts p JOIN branche_users u ON u.id=p.uid LEFT JOIN branche_profiles b ON b.uid=p.uid WHERE p.state='published' ORDER BY p.created DESC LIMIT 100");const visible=[];for(const r of rows){if(u&&await blocked(u.id,r.uid))continue;visible.push({...r,name:r.published?r.business:r.name.split(' ')[0],business:r.published?r.business:null});}return send(200,{posts:visible});}
+ if(path==='/api/branche/jobs'&&!write){const state=url.searchParams.get('state');const rows=await q("SELECT j.id,j.uid,j.title,j.category,j.city,j.state_code,j.description,j.timing,j.budget,j.state,j.created,u.name FROM branche_jobs j JOIN branche_users u ON u.id=j.uid WHERE j.state='open'"+(state?' AND j.state_code=?':'')+' ORDER BY j.created DESC LIMIT 200',state?[stateCode(state)]:[]);return send(200,{jobs:rows.map(r=>({...r,name:r.name.split(' ')[0]}))});}
+ if(path==='/api/branche/posts'&&!write){const state=url.searchParams.get('state');const rows=await q("SELECT p.id,p.uid,p.title,p.category,p.city,p.state_code,p.description,p.created,u.name,b.name business,b.published FROM branche_posts p JOIN branche_users u ON u.id=p.uid LEFT JOIN branche_profiles b ON b.uid=p.uid WHERE p.state='published'"+(state?' AND p.state_code=?':'')+' ORDER BY p.created DESC LIMIT 100',state?[stateCode(state)]:[]);const visible=[];for(const r of rows){if(u&&await blocked(u.id,r.uid))continue;visible.push({...r,name:r.published?r.business:r.name.split(' ')[0],business:r.published?r.business:null});}return send(200,{posts:visible});}
  if(!u)fail(401,'Please sign in to continue.');
  if(write)await limit('write:'+u.id,40,60000);
  if(path==='/api/branche/reviews'){
@@ -76,7 +81,7 @@ export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,m
   if(!existing)await limit('reviews:'+u.id,5,86400000);
   await q('INSERT INTO branche_reviews(id,uid,contractor,rating,body,created,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(uid,contractor) DO UPDATE SET rating=excluded.rating,body=excluded.body,updated=excluded.updated',[randomUUID(),u.id,contractor,body.rating,review,now(),now()]);return send(200,{saved:true});
  }
- if(path==='/api/branche/posts'&&req.method==='POST'){await limit('posts:'+u.id,5,86400000);const id=randomUUID();await q('INSERT INTO branche_posts VALUES(?,?,?,?,?,?,?,?)',[id,u.id,text(body.title,120),category(body.category),text(body.city,80),text(body.description,2500),'published',now()]);return send(201,{id});}
+ if(path==='/api/branche/posts'&&req.method==='POST'){await limit('posts:'+u.id,5,86400000);const id=randomUUID();await q('INSERT INTO branche_posts(id,uid,title,category,city,description,state,created,state_code) VALUES(?,?,?,?,?,?,?,?,?)',[id,u.id,text(body.title,120),category(body.category),text(body.city,80),text(body.description,2500),'published',now(),stateCode(body.state_code)]);return send(201,{id});}
  if(path==='/api/branche/posts'&&req.method==='DELETE'){const rows=await q("UPDATE branche_posts SET state='removed' WHERE id=? AND uid=? AND state='published' RETURNING id",[body.id,u.id]);if(!rows.length)fail(404,'Your post was not found.');return send(200,{saved:true});}
  if(path==='/api/branche/workspace'){
  if(u.role!=='contractor')fail(403,'A contractor account is required to connect a workspace.');
@@ -98,10 +103,10 @@ export function createHandler(store,{now=()=>Date.now(),workspaceRequest=fetch,m
  if(u.role!=='contractor')fail(403,'Business pages are for contractor accounts.');
  if(!write)return send(200,{profile:(await q('SELECT * FROM branche_profiles WHERE uid=?',[u.id]))[0]||null});
  if(req.method!=='PUT')fail(405,'Method not allowed.');
- const p={name:text(body.name,120),contact:text(body.contact,100),category:category(body.category),city:text(body.city,80),region:text(body.region,200),description:text(body.description,1600),services:text(body.services,700),license:text(body.license||'',100,false),issuer:text(body.issuer||'',120,false),insurance:text(body.insurance||'',150,false)};
- await q('INSERT INTO branche_profiles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uid) DO UPDATE SET name=excluded.name,contact=excluded.contact,category=excluded.category,city=excluded.city,region=excluded.region,description=excluded.description,services=excluded.services,license=excluded.license,issuer=excluded.issuer,insurance=excluded.insurance,published=excluded.published,updated=excluded.updated',[u.id,...Object.values(p),body.published===true?1:0,now()]);return send(200,{saved:true});
+ const p={name:text(body.name,120),contact:text(body.contact,100),category:category(body.category),city:text(body.city,80),region:text(body.region,200),description:text(body.description,1600),services:text(body.services,700),license:text(body.license||'',100,false),issuer:text(body.issuer||'',120,false),insurance:text(body.insurance||'',150,false),state_code:stateCode(body.state_code)};
+ await q('INSERT INTO branche_profiles(uid,name,contact,category,city,region,description,services,license,issuer,insurance,published,updated,state_code) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(uid) DO UPDATE SET name=excluded.name,contact=excluded.contact,category=excluded.category,city=excluded.city,region=excluded.region,description=excluded.description,services=excluded.services,license=excluded.license,issuer=excluded.issuer,insurance=excluded.insurance,published=excluded.published,updated=excluded.updated,state_code=excluded.state_code',[u.id,p.name,p.contact,p.category,p.city,p.region,p.description,p.services,p.license,p.issuer,p.insurance,body.published===true?1:0,now(),p.state_code]);return send(200,{saved:true});
  }
- if(path==='/api/branche/jobs'&&req.method==='POST'){await limit('jobs:'+u.id,5,86400000);const id=randomUUID();await q('INSERT INTO branche_jobs VALUES(?,?,?,?,?,?,?,?,?,?)',[id,u.id,text(body.title,120),category(body.category),text(body.city,80),text(body.description,2500),text(body.timing,80),text(body.budget||'Discuss with contractor',80),'open',now()]);return send(201,{id});}
+ if(path==='/api/branche/jobs'&&req.method==='POST'){await limit('jobs:'+u.id,5,86400000);const id=randomUUID();await q('INSERT INTO branche_jobs(id,uid,title,category,city,description,timing,budget,state,created,state_code) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[id,u.id,text(body.title,120),category(body.category),text(body.city,80),text(body.description,2500),text(body.timing,80),text(body.budget||'Discuss with contractor',80),'open',now(),stateCode(body.state_code)]);return send(201,{id});}
  if(path==='/api/branche/my-jobs'&&!write)return send(200,{jobs:await q('SELECT * FROM branche_jobs WHERE uid=? ORDER BY created DESC',[u.id])});
  if(path==='/api/branche/job-state'&&req.method==='PUT'){if(!['closed','open'].includes(body.state))fail(400,'Choose open or closed.');const rows=await q('UPDATE branche_jobs SET state=? WHERE id=? AND uid=? RETURNING id',[body.state,body.id,u.id]);if(!rows.length)fail(404,'Your job was not found.');return send(200,{saved:true});}
  if(path==='/api/branche/threads'){

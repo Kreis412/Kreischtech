@@ -17,7 +17,7 @@ test('legacy community adoption proves both identities and prevents profile take
  const store=await openStore({directory:join(dir,'community'),databaseUrl:''});
  const password='legacy profile password 2026';
  await store.query('INSERT INTO branche_users VALUES(?,?,?,?,?,?,?,?)',['legacy','legacy@example.test','Legacy Owner','contractor','salt',scryptSync(password,'salt',32).toString('hex'),termsVersion,Date.now()]);
- await store.query('INSERT INTO branche_posts VALUES(?,?,?,?,?,?,?,?)',['saved-post','legacy','Saved update','Carpentry','Mentor','Keep this saved update','published',Date.now()]);
+ await store.query('INSERT INTO branche_posts(id,uid,title,category,city,description,state,created) VALUES(?,?,?,?,?,?,?,?)',['saved-post','legacy','Saved update','Carpentry','Mentor','Keep this saved update','published',Date.now()]);
  const server=createProduct({dataDir:dir,communityOptions:{}});server.listen(0,'127.0.0.1');await once(server,'listening');
  t.after(async()=>{await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await store.close();});
  const base='http://127.0.0.1:'+server.address().port;
