@@ -101,3 +101,4 @@ test('annual Play card shows the yearly store charge and sends the annual subscr
  await playBillingView(host,{api,esc});assert.match(host.querySelector('[data-play-plans]').textContent,/190.00 \/ year/);assert.equal(host.querySelector('[data-play-packs]').textContent,'');
  const b=host.querySelector('[data-buy]');await b.onclick();assert.equal(method,undefined);await b.onclick();assert.equal(method.data.sku,'contractorsight_solo_annual');
 });
+test('Play lookup errors remain visible instead of claiming account ineligibility',async t=>{const host=browser(t);window.getDigitalGoodsService=async()=>({getDetails:async()=>{throw new window.DOMException('clientAppUnavailable','OperationError');}});await playBillingView(host,{api:async()=>visibleCatalog,esc});assert.match(host.querySelector('[data-play-status]').textContent,/Diagnostic: OperationError: clientAppUnavailable/);assert.equal(host.querySelector('[data-buy]'),null);});

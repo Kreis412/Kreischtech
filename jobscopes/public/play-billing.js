@@ -19,8 +19,8 @@ export async function playBillingView(host,{api,esc}){
  const retry=document.createElement('button');retry.type='button';retry.textContent='Reload purchase options';retry.onclick=async()=>{retry.disabled=true;try{await playBillingView(host,{api,esc});}catch(e){message.textContent=e.message;retry.disabled=false;}};message.after(retry);
  if(!data.purchase_enabled){message.textContent=data.ready?'Only the company owner can buy or restore purchases.':'Google Play purchases are temporarily unavailable. Please try again shortly.';return;}
  const timeout=async promise=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Google Play did not respond.')),12000);})]);}finally{clearTimeout(timer);}};
- let service,details;
- try{service=await timeout(window.getDigitalGoodsService(METHOD));try{details=await timeout(service.getDetails(catalog.map(p=>p.id)));}catch{details=[];}const missing=catalog.filter(p=>!details.some(d=>d.itemId===p.id));if(missing.length){const individual=await Promise.allSettled(missing.map(p=>timeout(service.getDetails([p.id]))));details.push(...individual.flatMap(r=>r.status==='fulfilled'?r.value:[]));}}
+ let service,details;const lookupErrors=[];const rememberError=e=>{const name=String(e?.name||'Error'),detail=String(e?.message||'No details returned');lookupErrors.push((name+': '+detail).slice(0,180));};
+ try{service=await timeout(window.getDigitalGoodsService(METHOD));try{details=await timeout(service.getDetails(catalog.map(p=>p.id)));}catch(e){rememberError(e);details=[];}const missing=catalog.filter(p=>!details.some(d=>d.itemId===p.id));if(missing.length){const individual=await Promise.allSettled(missing.map(p=>timeout(service.getDetails([p.id]))));individual.filter(r=>r.status==='rejected').forEach(r=>rememberError(r.reason));details.push(...individual.flatMap(r=>r.status==='fulfilled'?r.value:[]));}}
  catch{message.textContent='To buy packs, open the latest ContractorSight app installed from Google Play. If you just updated it, close and reopen the app.';return;}
  const confirm=async purchase=>{
   const result=await write('/api/billing/play/confirm',{product:purchase.itemId,token:purchase.purchaseToken});
@@ -37,7 +37,7 @@ export async function playBillingView(host,{api,esc}){
  };
  showCatalog(available);
  host.querySelector('[data-subscription-status]').textContent=(data.subscriptions||[]).map(s=>`${s.plan.toUpperCase()}: current period ends ${new Date(s.period_end).toLocaleDateString()}.`).join(' ')+(data.scheduled_change?` ${data.scheduled_change.plan.toUpperCase()} is scheduled for ${new Date(data.scheduled_change.effective_at).toLocaleDateString()}. Your current allowance remains until renewal. Manage this change in Google Play.`:'');
- message.textContent=available.length?'Choose a plan or pack. Google Play confirms the price and recurring terms before you pay.':'These packs are not available for your Google Play account yet.';
+ message.textContent=available.length?'Choose a plan or pack. Google Play confirms the price and recurring terms before you pay.':(lookupErrors.length?'Google Play could not load purchase options. Close ContractorSight completely, reopen it from its installed icon, then tap Reload purchase options. Diagnostic: '+lookupErrors[0]:'Google Play returned no purchasable products. Check that this app was installed from Google Play using the account currently selected in the Play Store, then reload purchase options.');
  let prepared=null;
  const resetChoice=()=>{host.querySelectorAll('[data-buy]').forEach(b=>{if(b.dataset.originalLabel)b.textContent=b.dataset.originalLabel;});prepared=null;};
  host.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>action(async()=>{
