@@ -5,11 +5,11 @@ import {playBillingView} from '../public/play-billing.js';
 import {joeUI} from '../public/joe.js';
 import {billingView} from '../public/billing.js';
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
-const visibleCatalog={ready:true,purchase_enabled:true,balance:0,joe_balance:0,plans:[{id:'contractorsight_solo',name:'Solo',interval:'month',seats:1,analyses:25,joe_answers:25}],packs:[{id:'analysis_1',name:'1 photo analysis',interval:'pack',analyses:1}]};
+const visibleCatalog={ready:true,purchase_enabled:true,balance:0,joe_balance:0,plans:[{id:'contractorsight_solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25,joe_answers:25}],packs:[{id:'analysis_1',name:'1 photo analysis',price_cents:99,interval:'pack',analyses:1}]};
 test('Play catalog remains visible when billing bridge is missing and reload recovers',async t=>{
  const host=browser(t),api=async()=>visibleCatalog;
  await playBillingView(host,{api,esc});
- assert.match(host.querySelector('[data-play-plans]').textContent,/Solo/);assert.match(host.querySelector('[data-play-packs]').textContent,/1 photo analysis/);assert.equal(host.querySelector('[data-buy]'),null);
+ assert.match(host.querySelector('[data-play-plans]').textContent,/Solo/);assert.ok(host.querySelector('[data-play-plans]').textContent.includes('.00 USD / month'));assert.ok(host.querySelector('[data-play-packs]').textContent.includes('.99 USD once'));assert.match(host.textContent,/US reference price/);assert.match(host.querySelector('[data-play-packs]').textContent,/1 photo analysis/);assert.equal(host.querySelector('[data-buy]'),null);
  window.getDigitalGoodsService=async()=>({getDetails:async ids=>ids.map(itemId=>({itemId,price:{currency:'USD',value:'0.99'}}))});
  await [...host.querySelectorAll('button')].find(b=>b.textContent==='Reload purchase options').onclick();
  assert.equal(host.querySelectorAll('[data-buy]').length,2);
