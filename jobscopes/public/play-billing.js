@@ -8,10 +8,18 @@ export async function playBillingView(host,{api,esc}){
  const write=(path,body)=>api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  const promoForm=host.querySelector('[data-analysis-promo]');
  if(promoForm)promoForm.onsubmit=async event=>{event.preventDefault();const button=promoForm.querySelector('button[type=submit]'),note=promoForm.querySelector('[data-promo-message]');button.disabled=true;note.textContent='Checking code…';try{const result=await write('/api/promo/analysis',{code:promoForm.elements.code.value});if(result.redeemed)host.querySelector('[data-balance]').textContent=result.balance+' photo analyses remaining';note.textContent=result.message;}catch(error){note.textContent=error.message;}finally{button.disabled=false;}};
- if(!data.purchase_enabled){message.textContent=data.ready?'Only the company owner can buy or restore packs.':'Google Play purchases are being connected. Your existing allowance is still available.';return;}
- const catalog=[...(data.plans||[]),...data.packs];
+ const catalog=[...(data.plans||[]),...(data.packs||[])];
+ const placeholder=p=>`<article class="plan-card"><h2>${esc(p.name)}</h2><p>${esc(p.analyses)} photo analyses${['month','year'].includes(p.interval)?` + ${esc(p.joe_answers)} Joe answers per month · ${esc(p.seats)} user${p.seats===1?'':'s'}`:' · credits carry over until used'}</p><p>Google Play price and checkout are temporarily unavailable. Reload purchase options to try again.</p></article>`;
+ const showCatalog=(items=[])=>{
+  for(const [selector,isPlan]of [['[data-play-plans]',true],['[data-play-packs]',false]])host.querySelector(selector).innerHTML=catalog.filter(p=>['month','year'].includes(p.interval)===isPlan).map(p=>{const item=items.find(i=>i.itemId===p.id);return item?card(item):placeholder(p);}).join('');
+ };
+ // Keep the catalog visible even when the Android billing bridge is unavailable.
+ showCatalog();
+ const retry=document.createElement('button');retry.type='button';retry.textContent='Reload purchase options';retry.onclick=async()=>{retry.disabled=true;try{await playBillingView(host,{api,esc});}catch(e){message.textContent=e.message;retry.disabled=false;}};message.after(retry);
+ if(!data.purchase_enabled){message.textContent=data.ready?'Only the company owner can buy or restore purchases.':'Google Play purchases are temporarily unavailable. Please try again shortly.';return;}
+ const timeout=async promise=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Google Play did not respond.')),12000);})]);}finally{clearTimeout(timer);}};
  let service,details;
- try{service=await window.getDigitalGoodsService(METHOD);details=await service.getDetails(catalog.map(p=>p.id));}
+ try{service=await timeout(window.getDigitalGoodsService(METHOD));try{details=await timeout(service.getDetails(catalog.map(p=>p.id)));}catch{details=[];}const missing=catalog.filter(p=>!details.some(d=>d.itemId===p.id));if(missing.length){const individual=await Promise.allSettled(missing.map(p=>timeout(service.getDetails([p.id]))));details.push(...individual.flatMap(r=>r.status==='fulfilled'?r.value:[]));}}
  catch{message.textContent='To buy packs, open the latest ContractorSight app installed from Google Play. If you just updated it, close and reopen the app.';return;}
  const confirm=async purchase=>{
   const result=await write('/api/billing/play/confirm',{product:purchase.itemId,token:purchase.purchaseToken});
@@ -20,14 +28,13 @@ export async function playBillingView(host,{api,esc}){
  };
  let busy=false;
  async function action(fn){if(busy)return;busy=true;host.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){message.textContent=e.name==='AbortError'?'Purchase canceled.':(e.message||'Purchase could not finish. Tap Check purchases before buying again.');}finally{busy=false;host.querySelectorAll('button').forEach(b=>b.disabled=false);}}
- const available=details.filter(item=>catalog.some(p=>p.id===item.itemId));
+ const available=details.filter(item=>catalog.some(p=>p.id===item.itemId)&&item.price?.currency&&Number.isFinite(Number(item.price?.value)));
  const card=item=>{
   const p=catalog.find(p=>p.id===item.itemId),price=new Intl.NumberFormat(navigator.language,{style:'currency',currency:item.price.currency}).format(Number(item.price.value));
   if(['month','year'].includes(p.interval))return `<article class="plan-card"><h2>${esc(p.name)}</h2><p>${esc(price)} / ${esc(p.interval)}</p><p>${esc(p.seats)} user${p.seats===1?'':'s'} · ${esc(p.analyses)} photo analyses · ${esc(p.joe_answers)} Joe answers per month${p.seats>1?' shared by the company':''}.</p>${data.subscriptions?.some(s=>s.plan===p.plan)?'<span class="badge">Current plan</span>':data.has_subscription?(data.subscriptions?.length&&!data.scheduled_change?`<button type="button" class="primary" data-buy="${esc(p.id)}" data-change>Change to ${esc(p.name)}</button>`:'<p>Manage your existing subscription with its original payment provider.</p>'):`<button type="button" class="primary" data-buy="${esc(p.id)}">Subscribe to ${esc(p.name)}</button>`}</article>`;
   return `<article class="plan-card"><h2>${esc(p.name)}</h2><p>${esc(price)} once</p><button type="button" class="primary" data-buy="${esc(p.id)}">Buy ${esc(p.analyses)} ${p.analyses===1?'analysis':'analyses'}</button></article>`;
  };
- host.querySelector('[data-play-plans]').innerHTML=available.filter(i=>['month','year'].includes(catalog.find(p=>p.id===i.itemId).interval)).map(card).join('')||'<p>Monthly Google Play plans are not connected yet. Your existing access is unchanged.</p>';
- host.querySelector('[data-play-packs]').innerHTML=available.filter(i=>!['month','year'].includes(catalog.find(p=>p.id===i.itemId).interval)).map(card).join('');
+ showCatalog(available);
  host.querySelector('[data-subscription-status]').textContent=(data.subscriptions||[]).map(s=>`${s.plan.toUpperCase()}: current period ends ${new Date(s.period_end).toLocaleDateString()}.`).join(' ')+(data.scheduled_change?` ${data.scheduled_change.plan.toUpperCase()} is scheduled for ${new Date(data.scheduled_change.effective_at).toLocaleDateString()}. Your current allowance remains until renewal. Manage this change in Google Play.`:'');
  message.textContent=available.length?'Choose a plan or pack. Google Play confirms the price and recurring terms before you pay.':'These packs are not available for your Google Play account yet.';
  let prepared=null;

@@ -274,7 +274,7 @@ async function load() {
       },navigation:settingsNavigation,isCurrent:()=>ticket===loadId});
     }
     else if (/^#joe(?:\/[\w-]+)?$/.test(location.hash)) {current=null; $('#breadcrumb').textContent='Ask Joe'; await joe.mount(main,location.hash.split('/')[1]||'');}
-    else if(location.hash==='#help'){main.onclick=null;current=null;$('#breadcrumb').textContent='Help';helpView(main);}
+    else if(['#help','#welcome'].includes(location.hash)){main.onclick=null;current=null;$('#breadcrumb').textContent='Help';helpView(main);}
     else if(location.hash==='#calculators'){main.onclick=null;current=null;$('#breadcrumb').textContent='Calculators';calculatorsView(main);}
     else if(location.hash==='#appointments'){main.onclick=null;current=null;$('#breadcrumb').textContent='Appointments';await appointmentsView(main,{api,esc,onProject:p=>projectForm(false,p)});}
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}

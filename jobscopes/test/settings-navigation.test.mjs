@@ -29,3 +29,11 @@ test('a slow previous settings request cannot overwrite the newly selected secti
  const host=browser(t);let finish,current='billing';const old=renderSettingsSection(host,{render:async section=>{await new Promise(r=>finish=r);section.innerHTML='<h1>Stale billing</h1>';},navigation,isCurrent:()=>current==='billing'});
  current='privacy';location.hash='#settings/privacy';await mount(host,section=>{section.innerHTML='<h1>Current privacy</h1>';});finish();await old;check(host,location.hash);assert.match(host.textContent,/Current privacy/);assert.doesNotMatch(host.textContent,/Stale billing/);
 });
+import {sectionTabs} from '../public/settings-navigation.js';
+test('section tabs show one category and isolate keyboard navigation',t=>{
+ const host=browser(t);host.innerHTML='<section id="one">One</section><section id="two">Two</section>';let selected;let bubbled=false;document.addEventListener('keydown',()=>bubbled=true);const groups=['one','two'].map(id=>({id,label:id,nodes:[host.querySelector('#'+id)]}));sectionTabs(host,groups,{selected:'two',onSelect:id=>selected=id});assert.equal(host.querySelector('#one').hidden,true);assert.equal(host.querySelector('#two').hidden,false);const buttons=host.querySelectorAll('[role=tab]');buttons[1].dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));assert.equal(selected,'one');assert.equal(bubbled,false);assert.equal(host.querySelector('#two').hidden,true);buttons[1].click();assert.equal(host.querySelector('#two').hidden,false);
+});
+import {helpView} from '../public/help.js';
+test('new-account tour is optional and all four tutorials remain accessible',t=>{
+ const host=browser(t);location.hash='#welcome';helpView(host);assert.ok(host.textContent.includes('Want a quick tour?'));host.querySelector('section.panel button').click();assert.equal(host.querySelector('[role=tablist]').hidden,false);for(const name of ['Analyze a photo','Ask Joe','Make an estimate','Create your Branche page']){const button=[...host.querySelectorAll('[role=tab]')].find(b=>b.textContent===name);button.click();assert.equal(host.querySelectorAll('[role=tabpanel]:not([hidden])').length,1);assert.equal(host.querySelector('[role=tabpanel]:not([hidden]) h2').textContent,name);}location.hash='#help';helpView(host);assert.equal(host.textContent.includes('Want a quick tour?'),false);
+});

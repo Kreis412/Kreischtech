@@ -5,6 +5,21 @@ import {playBillingView} from '../public/play-billing.js';
 import {joeUI} from '../public/joe.js';
 import {billingView} from '../public/billing.js';
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+const visibleCatalog={ready:true,purchase_enabled:true,balance:0,joe_balance:0,plans:[{id:'contractorsight_solo',name:'Solo',interval:'month',seats:1,analyses:25,joe_answers:25}],packs:[{id:'analysis_1',name:'1 photo analysis',interval:'pack',analyses:1}]};
+test('Play catalog remains visible when billing bridge is missing and reload recovers',async t=>{
+ const host=browser(t),api=async()=>visibleCatalog;
+ await playBillingView(host,{api,esc});
+ assert.match(host.querySelector('[data-play-plans]').textContent,/Solo/);assert.match(host.querySelector('[data-play-packs]').textContent,/1 photo analysis/);assert.equal(host.querySelector('[data-buy]'),null);
+ window.getDigitalGoodsService=async()=>({getDetails:async ids=>ids.map(itemId=>({itemId,price:{currency:'USD',value:'0.99'}}))});
+ await [...host.querySelectorAll('button')].find(b=>b.textContent==='Reload purchase options').onclick();
+ assert.equal(host.querySelectorAll('[data-buy]').length,2);
+});
+test('Play retries missing items individually without hiding other purchase options',async t=>{
+ const host=browser(t),requested=[];
+ window.getDigitalGoodsService=async()=>({getDetails:async ids=>{requested.push(ids);if(ids.length>1)return [];return ids.map(itemId=>({itemId,price:{currency:'USD',value:'0.99'}}));}});
+ await playBillingView(host,{api:async()=>visibleCatalog,esc});
+ assert.equal(host.querySelectorAll('[data-buy]').length,2);assert.equal(requested.length,3);
+});
 function browser(t){const dom=new JSDOM('<body data-signed-in="true"><main></main></body>',{url:'https://example.com/#company'});for(const key of ['window','document','location','localStorage']){const old=globalThis[key];globalThis[key]=dom.window[key];t.after(()=>{if(old===undefined)delete globalThis[key];else globalThis[key]=old;});}t.after(()=>dom.window.close());return dom.window.document.querySelector('main');}
 test('Joe dismissal applies across pages and refreshes until the next local day; manual Joe remains',t=>{
  browser(t);localStorage.setItem('jobscopes-joe-suggestions','on');const ui=joeUI({esc});ui.widgets(null);
