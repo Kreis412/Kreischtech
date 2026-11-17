@@ -39,7 +39,7 @@ export async function billingView(host,{api,esc}){
  async function action(button,fn){const buttons=[...host.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);message.textContent='Working…';try{await fn();}catch(e){message.textContent=e.message;message.scrollIntoView({block:'center',behavior:'smooth'});}finally{buttons.forEach(b=>b.disabled=false);}}
  host.querySelectorAll('[data-test-plan]').forEach(button=>button.onclick=()=>action(button,async()=>{
   const pack=button.dataset.testPlan.startsWith('analysis_');
-  if(live&&!host.querySelector(pack?'#pack-consent':'#billing-consent')?.checked)throw new Error('Please check the agreement for this purchase before continuing.');
+  if(live){const consent=host.querySelector(pack?'#pack-consent':'#billing-consent');if(!consent?.checked){if(consent){const label=consent.closest('label');button.before(label);label.classList.add('purchase-agreement');consent.focus();label.scrollIntoView?.({block:'center',behavior:'smooth'});}message.textContent='Review the agreement beside your selected purchase, check the box, then tap this purchase button again. No payment has started.';return;}}
   const result=await write('/api/billing/checkout',{plan:button.dataset.testPlan,...(button.dataset.offer?{offer:button.dataset.offer}:{}),...(live?{terms_version:'2026-11-09'}:{})});
   const url=new URL(result.url);if(url.protocol!=='https:'||url.hostname!=='checkout.stripe.com')throw new Error('Unexpected checkout address.');
   location.assign(url.href);
