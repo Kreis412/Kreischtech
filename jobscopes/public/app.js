@@ -1,6 +1,6 @@
 import {brancheLinkView} from '/branche-link.js';
 import { fieldNotes } from '/field-notes.js';
-import {renderSettingsSection} from '/settings-navigation.js';
+import {renderSettingsSection,installPageGraphics} from '/settings-navigation.js';
 import {initAnalytics,analyticsSettings} from '/analytics.js';
 import {dailyCheckin,checkinSettings} from '/daily-checkin.js';
 import {homeOverview, photoProjectPicker} from '/home.js';
@@ -41,6 +41,7 @@ themeButton.addEventListener('click', () => {
   try { localStorage.setItem('jobscopes-theme', dark ? 'dark' : 'light'); } catch {}
 });
 const main = $('#main'), dialog = $('#editor'), form = $('#editor-form');
+installPageGraphics(main);
 const types = ['Basement', 'Kitchen', 'Bathroom', 'Deck', 'Outdoor', 'General remodeling'];
 const statuses = ['Discovery', 'Planning', 'In progress', 'On hold', 'Complete'];
 const categories = ['General', 'Structure', 'Moisture', 'Electrical', 'Plumbing', 'Materials', 'Site conditions'];
