@@ -72,6 +72,11 @@ const templates = {
   general: { label: 'General remodeling', section: 'General work', items: [
     ['Main materials for confirmed scope', 'allowance', 'Split by product after scope review.'], ['Preparation and repair materials', 'allowance', 'Confirm existing conditions.'], ['Fasteners, adhesives and sealants', 'allowance', 'Include assembly-specific accessories.'], ['Trim, finishes and protection', 'allowance', 'Confirm quantities and selections.']
   ], checks: ['Confirm scope, measurements and selections'] },
+
+  gravel: {label:'Gravel driveway refresh',section:'General work',items:[['Gravel aggregate','allowance','Use supplier density and calculator quantities.'],['Geotextile fabric','sq ft','Confirm base preparation and overlap.'],['Grading and compaction','hour','Confirm access and equipment.','Labor'],['Delivery and hauling','allowance','Confirm supplier delivery fees.','Other cost']],checks:['Confirm driveway area, depth, drainage, base condition and access']},
+  fence: {label:'Fence installation',section:'Deck / outdoor',items:[['Fence panels or pickets','each','Confirm style and measured fence run.'],['Posts and caps','each','Confirm spacing, corners and gates.'],['Post concrete','bag','Confirm approved footing requirements.'],['Rails, gates and hardware','allowance','Match selected fence system.'],['Fence installation labor','hour','Include layout, digging and cleanup.','Labor']],checks:['Verify property boundaries, utility locations and local fence requirements']},
+  roofing: {label:'Shingle roof replacement',section:'General work',items:[['Shingles','box','Use actual bundle coverage and roof calculator.'],['Underlayment and ice barrier','roll','Confirm local requirements and coverage.'],['Flashing, drip edge and vents','allowance','Review penetrations, valleys and ventilation.'],['Roof tear-off and installation','hour','Confirm layers, access and fall protection.','Labor'],['Roof disposal','allowance','Confirm hauling and disposal.','Other cost']],checks:['Confirm roof measurements, pitch, decking condition and work exclusions']},
+  painting: {label:'Interior painting',section:'General work',items:[['Wall and ceiling paint','gallon','Use paint calculator and manufacturer coverage.'],['Primer','gallon','Confirm substrate preparation.'],['Patch, caulk and masking supplies','allowance','Confirm repair scope and surface protection.'],['Painting labor','hour','Include preparation, coats and cleanup.','Labor']],checks:['Confirm paintable area, coats, colors, repairs and finish quality']},
   costs: { label: 'Labor and project costs', section: 'Project costs', items: [
     ['Labor', 'hour', 'Break out demolition, installation and finishing as needed.', 'Labor'],
     ['Delivery / freight', 'allowance', 'Include each supplier delivery.', 'Other cost'],
@@ -172,7 +177,7 @@ export function materialsStore(db) {
     return { ...result, estimated_return_percent: totals.total_cents > 0 && markup_cents !== null ? markup_cents / totals.total_cents * 100 : null, token, snapshots, quotes, corrections, changed_since_snapshot: Boolean(latest && latest.token !== token), delta_cents: latest ? totals.total_cents - latest.total_cents : null };
   }
   function seed(projectId, modules) {
-    if (!Array.isArray(modules) || !modules.length || modules.length > 8 || modules.some(k => !Object.hasOwn(templates, k))) fail(400, 'Select valid checklist sections.');
+    if (!Array.isArray(modules) || !modules.length || modules.length > Object.keys(templates).length || modules.some(k => !Object.hasOwn(templates, k))) fail(400, 'Select valid checklist sections.');
     db.exec('BEGIN IMMEDIATE');
     try {
       for (const key of new Set(modules)) {
