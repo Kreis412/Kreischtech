@@ -107,4 +107,17 @@ test('authenticated companies: isolation, roles, invitations, sessions and persi
     await visitor.request('/api/account/session');
     assert.equal((await visitor.request('/api/account/session')).user,null);
   });
+  await t.test('DIY signup creates a private workspace without a company name',async()=>{
+    const visitor=client(),email='homeowner@example.test';
+    await visitor.request('/api/account/register','POST',{email,password,name:'Homeowner',workspace_type:'diy'},201);
+    const session=await visitor.request('/api/account/session');
+    assert.equal(session.company.name,'My Home Projects');
+    assert.equal(session.companies.length,1);
+    assert.deepEqual(await visitor.request('/api/projects'),[]);
+    const homeProject=await visitor.request('/api/projects','POST',{name:'Deck refresh',type:'Deck',status:'Discovery'},201);
+    await a.request("/api/account/login","POST",{email:"owner-a@example.test",password});
+    await a.request('/api/projects/'+homeProject.id,'GET',undefined,404);
+    await visitor.request('/api/account/logout','POST',{});
+    assert.equal((await visitor.request('/api/account/session')).user,null);
+  });
 });

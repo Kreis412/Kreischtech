@@ -86,7 +86,8 @@ export function accounts(dataDir,{secureCookies=false,registrationCode=null,seat
       const b=await json(req), mail=email(b.email), pass=password(b.password);
       if(path.endsWith('/register')) {
         if(registrationCode!==null && (!registrationCode || typeof b.registration_code!=='string' || !timingSafeEqual(Buffer.from(hash(b.registration_code)),Buffer.from(hash(registrationCode))))) fail(403,'Registration requires a valid private pilot code.');
-        const name=label(b.name), company=label(b.company);const salt=randomBytes(16).toString('hex');
+        if(b.workspace_type!==undefined && !['diy','business'].includes(b.workspace_type)) fail(400,'Choose a home or business workspace.');
+        const name=label(b.name), company=b.workspace_type==='diy'?'My Home Projects':label(b.company);const salt=randomBytes(16).toString('hex');
         const key=await derive(pass,salt,32,kdf);
         const id=randomUUID(),companyId=randomUUID();
         try {transaction(()=>{

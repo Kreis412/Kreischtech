@@ -291,7 +291,7 @@ async function load() {
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Insights' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }
-    else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; const projectsOnly=location.hash==='#projects'; $('#breadcrumb').textContent = projectsOnly?'Projects':'Home'; dashboard(projectsOnly); }
+    else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; const firstProject=location.hash==='#projects/new'; const projectsOnly=firstProject||location.hash==='#projects'; if(firstProject)history.replaceState(null,'','#projects'); $('#breadcrumb').textContent = projectsOnly?'Projects':'Home'; dashboard(projectsOnly); if(firstProject)projectForm(); }
   } catch (e) { if (ticket === loadId) main.innerHTML = empty('Workspace unavailable', esc(e.message), '<button data-action="refresh">Try again</button> <a class="button" href="#projects">All projects</a>'); }
   finally { if (ticket === loadId) {main.removeAttribute('aria-busy');joe.widgets(current);} }
 }
