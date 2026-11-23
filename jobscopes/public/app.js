@@ -77,7 +77,7 @@ function dashboard(projectsOnly = false) {
     <div class="field-note"><span class="note-icon" aria-hidden="true">↳</span><div><strong>Good projects start with good observations.</strong>Capture what you find on site. Turn the unknowns into a clear next step.</div></div>`;
   if(!projectsOnly){
     const playBuild=isPlayDistribution(location.search,document.referrer,sessionStorage);
-    main.insertAdjacentHTML('beforeend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, compare Solo, Pro and Team, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
+    main.insertAdjacentHTML('beforeend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Planning one project or pricing several jobs?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'Buy photo credits for a weekend project, or get monthly photo analyses and Joe answers for ongoing work.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
     const identity=main.querySelector('#home-profession');
     api('/api/business-expertise').then(profile=>{if(identity?.isConnected&&profile.profession)identity.textContent=profile.profession;}).catch(()=>{});
     dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc,force:location.hash==='#checkin'});
@@ -275,7 +275,11 @@ async function load() {
       if(location.hash==='#settings/branche') await brancheLinkView(section,{api,esc});
       else if(location.hash==='#settings/security') await security.mount(section);
       else if(location.hash==='#settings/profile') await companyProfile(section,{api,esc});
-      else if(location.hash==='#settings/billing') await billingView(section,{api,esc});
+      else if(['#settings/billing','#settings/billing/packs','#settings/billing/plans'].includes(location.hash)){
+        const offer=location.hash.split('/')[2];
+        await billingView(section,{api,esc});
+        if(ticket===loadId && offer)section.querySelector('[data-offer-section="'+offer+'"]')?.focus();
+      }
       else if(location.hash==='#settings/privacy') analyticsSettings(section);
       else if(location.hash==='#settings/checkin') checkinSettings(section,{session:account.getSession(),api,esc});
       else if(location.hash==='#settings/appearance') appearanceView(section);

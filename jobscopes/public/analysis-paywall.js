@@ -6,7 +6,25 @@ export async function showAnalysisPaywall({api,exhausted=false,kind='photo'}={})
  if(document.querySelector('.analysis-paywall'))return false;
  if(!exhausted&&play.has_subscription)return false;
  if(!exhausted&&(billing.subscriptions?.some(s=>!['canceled','incomplete_expired'].includes(s.status))||billing.carryover_balance>0))return false;
- const dialog=document.createElement('dialog');dialog.className='analysis-paywall';dialog.setAttribute('aria-label','Choose your photo analysis allowance');
- dialog.innerHTML='<section><div class="eyebrow">Keep the next bid moving</div><h2>'+(exhausted?'Add credits for your next photo analysis':'Your first photo review is saved')+'</h2><p>'+(exhausted?'Your photo-analysis allowance is used up. Choose an existing plan or a one-time pack to run another analysis.':'Turn the next jobsite photo into findings, a starting estimate and a material list. Compare the existing plans or buy a photo pack without a subscription.')+'</p><ul><li>Review visible conditions and potential issues</li><li>Build estimates using your scope and measurements</li><li>Keep photos and job information organized</li></ul><p>Purchased pack credits carry over. Plan allowances refresh monthly. Review prices and renewal terms before paying.</p><a class="button primary" href="#settings/billing" data-view-plans>View plans & photo packs</a> <button type="button" data-close>Continue with saved work</button><p class="notice">Calculators and Branche business pages stay free. Your saved results remain available. AI drafts need your review.</p></section>';
- if(kind==='joe'){dialog.querySelector('h2').textContent='Choose a plan for construction advice';dialog.querySelector('h2+p').textContent='Your Joe-answer allowance is used up. Choose an existing subscription plan with Joe answers to continue. Basic app help remains free. Photo-analysis packs do not include Joe answers.';dialog.querySelector('[data-view-plans]').textContent='View subscription plans';}document.body.append(dialog);const close=()=>{dialog.close();dialog.remove();};dialog.querySelector('[data-close]').onclick=()=>{track('paywall_dismissed');close();};dialog.querySelector('[data-view-plans]').onclick=()=>{track('paywall_plan_clicked');close();};dialog.addEventListener('cancel',()=>{track('paywall_dismissed');dialog.remove();});if(exhausted)dialog.showModal();else dialog.show();track('paywall_viewed');return true;
+ const joe=kind==='joe';
+ const context=joe?'joe_limit':exhausted?'photo_limit':'first_result';
+ const dialog=document.createElement('dialog');
+ dialog.className='analysis-paywall';
+ dialog.setAttribute('aria-labelledby','analysis-offer-title');
+ const title=joe?'Keep planning with Joe':exhausted?'Ready to check another photo?':'Your first photo review is saved';
+ const description=joe?'Your Joe answers are used up. A plan includes monthly answers for questions about the work, materials and sequence. Built-in app help is free.':exhausted?'Your photo credits are used up. Buy a one-time photo pack for this project, or choose monthly allowances for ongoing work.':'Working on one room or deck? A one-time photo pack lets you check another area when you’re ready. For regular jobs, plans include photo analyses and answers from Joe.';
+ dialog.innerHTML=`<section><h2 id="analysis-offer-title">${title}</h2><p>${description}</p>
+ ${joe?'':'<a class="button primary" href="#settings/billing/packs" data-offer="packs">See one-time photo packs</a>'}
+ <a class="button ${joe?'primary':''}" href="#settings/billing/plans" data-view-plans data-offer="plans">${joe?'See plans with Joe answers':'Compare monthly and annual plans'}</a>
+ <button type="button" data-close>Continue with saved work</button></section>`;
+ document.body.append(dialog);
+ const close=()=>{dialog.close();dialog.remove();};
+ dialog.querySelector('[data-close]').onclick=()=>{track('paywall_dismissed',{context});close();};
+ dialog.querySelectorAll('[data-offer]').forEach(link=>link.onclick=()=>{
+  track('paywall_plan_clicked',{context,offer:link.dataset.offer});close();
+ });
+ dialog.addEventListener('cancel',()=>{track('paywall_dismissed',{context});dialog.remove();});
+ if(exhausted)dialog.showModal();else dialog.show();
+ track('paywall_viewed',{context});
+ return true;
 }
