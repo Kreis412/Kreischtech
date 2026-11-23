@@ -10,6 +10,7 @@ import {appointmentsView} from '/appointments.js';
 import {companyProfile} from '/company-profile.js';
 import {customerAdmin} from '/customer-admin.js';
 import {billingView,isPlayDistribution} from '/billing.js';
+import {confirmPurchase,thankYou} from '/purchase-confirmation.js';
 import { api } from '/api.js';
 import { normalizeCurrency } from '/currency.js';
 import { pendingPhotos,queuePhoto,sendPhoto,discardPhoto } from '/photo-queue.js';
@@ -66,19 +67,21 @@ function toast(message, error = false) {
   toastTimer = setTimeout(() => { el.hidden = true; }, error ? 10000 : 4500);
 }
 const empty = (title, description, action = '') => `<div class="empty"><div class="empty-icon" aria-hidden="true">▦</div><h2>${title}</h2><p>${description}</p>${action}</div>`;
-function dashboard() {
+function dashboard(projectsOnly = false) {
   const active = projects.filter(p => !['Complete', 'On hold'].includes(p.status)).length;
-  main.innerHTML = `<section class="page-heading"><div><div class="eyebrow">A clearer view of every job.</div><h1>Your workspace</h1><p>From the first site photo to the final payment.</p></div><button class="primary" data-action="new-project"><span aria-hidden="true">＋</span> New project</button></section>
-    ${homeOverview({projects,session:account.getSession(),role:document.body.dataset.role,esc})}
+  main.innerHTML = `<section class="page-heading"><div><div class="eyebrow">A clearer view of every job.</div><h1>${projectsOnly?'Projects':'Your workspace'}</h1><p>${projectsOnly?'Manage the jobs you are estimating or tracking.':'From the first site photo to the final payment.'}</p></div><button class="primary" data-action="new-project"><span aria-hidden="true">＋</span> New project</button></section>
+    ${projectsOnly?'':homeOverview({projects,session:account.getSession(),role:document.body.dataset.role,esc})}
     <section class="stats" aria-label="Workspace totals"><div class="stat"><span>Active projects</span><strong>${active.toString().padStart(2, '0')}</strong></div><div class="stat"><span>Open discoveries</span><strong>${projects.reduce((n,p) => n + p.open_count, 0).toString().padStart(2, '0')}</strong></div><div class="stat"><span>Site photos</span><strong>${projects.reduce((n,p) => n + p.photo_count, 0).toString().padStart(2, '0')}</strong></div></section>
     <section><div class="section-head"><h2>Project board <span class="count">${projects.length}</span></h2><button class="subtle" data-action="refresh">↻ Refresh</button></div>
     <div class="filters"><label class="search filter-label">Search projects<input id="search" type="search" placeholder="Search projects, clients, or addresses…" value="${esc(filters.query)}"></label><label class="filter-label">Filter by status<select id="status-filter"><option value="">All statuses</option>${options(statuses, filters.status)}</select></label><label class="filter-label">Filter by project type<select id="type-filter"><option value="">All project types</option>${options(types, filters.type)}</select></label></div><div id="project-list"></div></section>
     <div class="field-note"><span class="note-icon" aria-hidden="true">↳</span><div><strong>Good projects start with good observations.</strong>Capture what you find on site. Turn the unknowns into a clear next step.</div></div>`;
-  const playBuild=isPlayDistribution(location.search,document.referrer,sessionStorage);
-  main.insertAdjacentHTML('beforeend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, compare Solo, Pro and Team, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
-  const identity=main.querySelector('#home-profession');
-  api('/api/business-expertise').then(profile=>{if(identity?.isConnected&&profile.profession)identity.textContent=profile.profession;}).catch(()=>{});
-  dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc,force:location.hash==='#checkin'});
+  if(!projectsOnly){
+    const playBuild=isPlayDistribution(location.search,document.referrer,sessionStorage);
+    main.insertAdjacentHTML('beforeend', '<section class="plan-prompt"><div><strong>'+ (playBuild?'Your plan & AI allowance':'Need more photo analyses or Joe answers?')+'</strong><p>'+ (playBuild?'View remaining usage and Google Play purchase availability.':'See your allowance, compare Solo, Pro and Team, or manage your existing plan.')+'</p></div><a class="button primary" href="#settings/billing">'+(playBuild?'View plan & usage':'View plans & upgrade')+'</a></section>');
+    const identity=main.querySelector('#home-profession');
+    api('/api/business-expertise').then(profile=>{if(identity?.isConnected&&profile.profession)identity.textContent=profile.profession;}).catch(()=>{});
+    dailyCheckin(main,{session:account.getSession(),projects,role:document.body.dataset.role,api,esc,force:location.hash==='#checkin'});
+  }
   renderCards();
   $('#search').addEventListener('input', e => { filters.query = e.target.value; renderCards(); });
   $('#status-filter').addEventListener('change', e => { filters.status = e.target.value; renderCards(); });
@@ -91,7 +94,7 @@ function renderCards() {
 function projectView() {
   fieldNotes.unmount();
   const p = current;
-  main.innerHTML = `<a class="back" href="#">← All projects</a><section class="page-heading"><div><div class="eyebrow">${esc(p.type)} / Project workspace</div><h1>${esc(p.name)}</h1><p>${esc(p.address || 'Add a jobsite address to get started.')}</p><div class="detail-meta">${badge(p.status)}<span>${esc(p.client || 'No client added')}</span></div></div><button data-action="edit-project">Edit project <span aria-hidden="true">↗</span></button></section>
+  main.innerHTML = `<a class="back" href="#projects">← All projects</a><section class="page-heading"><div><div class="eyebrow">${esc(p.type)} / Project workspace</div><h1>${esc(p.name)}</h1><p>${esc(p.address || 'Add a jobsite address to get started.')}</p><div class="detail-meta">${badge(p.status)}<span>${esc(p.client || 'No client added')}</span></div></div><button data-action="edit-project">Edit project <span aria-hidden="true">↗</span></button></section>
     <details class="panel project-guide" ${!p.photos.length && !p.discoveries.length ? 'open' : ''}><summary>New to this project? Start here</summary><p>1. Add site photos. 2. Record observations or run analysis in Project workspace. 3. Build your Materials &amp; estimate.</p><div class="upload-actions"><button data-action="photos">Add site photos</button><button data-action="materials">Build an estimate</button><a class="button" href="#help">Read the quick guide</a></div></details><nav class="upload-actions" aria-label="Quick project actions"><button class="primary" data-action="quick-camera">Take photo</button><button class="primary" data-action="analyze-photos">Analyze photo</button><button data-action="new-discovery">Log observation</button><button data-action="edit-project">Update project status</button></nav>
     <div class="detail-layout"><section><div class="tabs" role="tablist" aria-label="Project details"><button id="discoveries-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'discoveries'}" data-action="discoveries">Discovery Log <span class="count">${p.discoveries.length}</span></button><button id="photos-tab" role="tab" aria-controls="tab-content" aria-selected="${tab === 'photos'}" data-action="photos">Site photos <span class="count">${p.photos.length}</span></button></div><div id="tab-content" role="tabpanel" aria-labelledby="${tab}-tab"></div></section>
     <aside class="detail-sidebar"><section class="panel"><div class="eyebrow">The brief</div><h2>Project details</h2><dl><dt>PROJECT TYPE</dt><dd>${esc(p.type)}</dd><dt>CLIENT</dt><dd>${esc(p.client || 'Not added')}</dd><dt>LOCATION</dt><dd>${esc(p.address || 'Not added')}</dd><dt>SCOPE & NOTES</dt><dd>${esc(p.notes || 'No scope added yet. Use Edit project to describe the work.')}</dd><dt>LAST EDITED</dt><dd>${date(p.updated_at)}</dd></dl></section><section class="panel"><div class="eyebrow">Walkthrough notes</div><h2>Record it while it’s fresh.</h2><p class="muted">Document existing conditions, questions, and unexpected findings. Add a photo and a next step so nothing gets lost.</p><p class="notice">Discovery entries are your field observations. Photo analysis creates draft findings in Project workspace for human review.</p></section></aside></div>`;
@@ -207,7 +210,7 @@ function deleteProjectForm() {
 }
 function projectForm(edit = false, prefill = null) {
   const p = edit ? current : prefill || { name: '', client: '', address: '', notes: '', type: 'General remodeling', status: 'Discovery' };
-  openForm(edit ? 'Edit project' : 'New project', 'Only the project name is required. You can edit the other details later.',
+  openForm(edit ? 'Edit project' : 'New project', 'Use one project per job or separately managed phase. Only the name is required.',
     field('Project name', 'name', p.name, { required: true, max: 120, full: true }) + field('Client / company', 'client', p.client, { full: true }) + field('Jobsite address', 'address', p.address, { max: 300, full: true }) + selectField('Project type', 'type', types, p.type) + selectField('Status', 'status', statuses, p.status) + field('Scope & notes', 'notes', p.notes, { area: true, max: 4000, full: true }),
     async values => {
       const saved = await write(edit ? `/api/projects/${p.id}` : '/api/projects', edit ? 'PUT' : 'POST', { ...values, revision: p.revision });
@@ -247,9 +250,10 @@ async function load() {
   fieldNotes.unmount();
   if (location.hash === '#team') history.replaceState(null,'','#settings');
   if (location.hash === '#security') history.replaceState(null,'','#settings/security');
+  const stripeSession = new URLSearchParams(location.search).get('stripe_session');
   const ticket = ++loadId; const match = location.hash.match(/^#project\/([\w-]+)$/);
   document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : ['#company','#statistics','#equipment','#appointments','#calculators','#help'].includes(location.hash) ? location.hash : '#');
+    const selected = link.getAttribute('href') === (location.hash.startsWith('#settings') ? '#settings' : location.hash.startsWith('#joe') ? '#joe' : location.hash.startsWith('#project/') ? '#projects' : ['#projects','#company','#statistics','#equipment','#appointments','#calculators','#help'].includes(location.hash) ? location.hash : '#');
     if (selected) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (dialog.open) dialog.close();
@@ -259,7 +263,13 @@ async function load() {
     if (!await account.check()) return;
     if (ticket !== loadId) return;
     fieldNotes.configure({api,getIdentity:()=>account.getSession(),onSynced:(note,saved)=>{if(current?.id===note.projectId){if(!current.discoveries.some(d=>d.id===saved.id))current.discoveries.unshift(saved);if(tab==='discoveries')renderDiscoveryRecords();}}});
-    if (location.hash.startsWith('#settings')) {
+    if(location.hash==='#purchase/thanks'){
+      main.onclick=null;current=null;$('#breadcrumb').textContent='Purchase confirmation';
+      if(history.state?.purchaseConfirmed)thankYou(main);
+      else if(stripeSession)await confirmPurchase(main,{write,sessionId:stripeSession,verify:()=>ticket===loadId});
+      else location.hash='#settings/billing';
+    }
+    else if (location.hash.startsWith('#settings')) {
       main.onclick=null;current=null;$('#breadcrumb').textContent='Settings';
       await renderSettingsSection(main,{render:async section=>{
       if(location.hash==='#settings/branche') await brancheLinkView(section,{api,esc});
@@ -281,8 +291,8 @@ async function load() {
     else if(location.hash==='#equipment'){main.onclick=null;current=null;$('#breadcrumb').textContent='Equipment & Fleet';await equipment.mount(main);}
     else if (['#company','#statistics'].includes(location.hash)) { current = null; $('#breadcrumb').textContent = location.hash === '#statistics' ? 'Insights' : 'Company'; await company.mount(main); }
     else if (match) { main.onclick = null; const data = await api(`/api/projects/${match[1]}`); if (ticket !== loadId) return; current = data; $('#breadcrumb').textContent = 'Project workspace'; projectView(); }
-    else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; $('#breadcrumb').textContent = 'Home'; dashboard(); }
-  } catch (e) { if (ticket === loadId) main.innerHTML = empty('Workspace unavailable', esc(e.message), '<button data-action="refresh">Try again</button> <a class="button" href="#">All projects</a>'); }
+    else { main.onclick = null; const data = await api('/api/projects'); if (ticket !== loadId) return; projects = data; current = null; const projectsOnly=location.hash==='#projects'; $('#breadcrumb').textContent = projectsOnly?'Projects':'Home'; dashboard(projectsOnly); }
+  } catch (e) { if (ticket === loadId) main.innerHTML = empty('Workspace unavailable', esc(e.message), '<button data-action="refresh">Try again</button> <a class="button" href="#projects">All projects</a>'); }
   finally { if (ticket === loadId) {main.removeAttribute('aria-busy');joe.widgets(current);} }
 }
 main.addEventListener('click', e => {
@@ -314,6 +324,9 @@ main.addEventListener('keydown', e => {
 });
 window.addEventListener('hashchange', () => { tab = 'operations'; load(); window.scrollTo(0, 0); });
 window.addEventListener('offline', () => toast('You’re offline. Reconnect before saving changes.', true));
+if(location.hash==='#settings/billing'&&new URLSearchParams(location.search).has('stripe_session')){
+  history.replaceState(null,'',location.pathname+location.search+'#purchase/thanks');
+}
 initAnalytics();
 load();
 

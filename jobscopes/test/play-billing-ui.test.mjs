@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {playBillingView} from '../public/play-billing.js';
 import {joeUI} from '../public/joe.js';
+import {confirmPurchase} from '../public/purchase-confirmation.js';
 import {billingView} from '../public/billing.js';
 const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 const visibleCatalog={ready:true,purchase_enabled:true,balance:0,joe_balance:0,plans:[{id:'contractorsight_solo',name:'Solo',price_cents:1900,interval:'month',seats:1,analyses:25,joe_answers:25}],packs:[{id:'analysis_1',name:'1 photo analysis',price_cents:99,interval:'pack',analyses:1}]};
@@ -37,7 +38,8 @@ test('Play UI displays store price, verifies before completing, and restores pen
  const api=async(path,options)=>{calls.push(path);if(path.endsWith('/confirm')){const b=JSON.parse(options.body);if(b.token==='pending-token')return {pending:true};balance=5;return {confirmed:true,balance};}return {ready:true,purchase_enabled:true,balance,joe_balance:0,packs:[{id:'analysis_5',name:'5 photo analyses',analyses:5}]};};
  await playBillingView(host,{api,esc});assert.match(host.textContent,/\$4.99/);
  await host.querySelector('[data-buy]').onclick();assert.deepEqual(complete,[]);assert.equal(host.querySelector('[data-buy]').textContent,'Continue in Google Play');
- await host.querySelector('[data-buy]').onclick();assert.deepEqual(complete,['success']);assert.match(host.textContent,/5 photo analyses remaining/);
+ assert.ok(host.querySelector('a[href="/refunds.html"]'));
+ await host.querySelector('[data-buy]').onclick();assert.equal(location.hash,'#purchase/thanks');assert.equal(window.history.state.purchaseConfirmed,true);assert.deepEqual(complete,['success']);assert.match(host.textContent,/5 photo analyses remaining/);
  await host.querySelector('[data-restore]').onclick();assert.match(host.textContent,/payment is still pending/);assert.ok(calls.includes('/api/billing/play/sync'));
 });
 test('Play UI never offers a purchase when server or device cannot verify it',async t=>{
@@ -102,4 +104,25 @@ test('annual Play card shows the yearly store charge and sends the annual subscr
  const b=host.querySelector('[data-buy]');await b.onclick();assert.equal(method,undefined);await b.onclick();assert.equal(method.data.sku,'contractorsight_solo_annual');
 });
 test('Play lookup errors remain visible instead of claiming account ineligibility',async t=>{const host=browser(t);window.getDigitalGoodsService=async()=>({getDetails:async()=>{throw new window.DOMException('clientAppUnavailable','OperationError');}});await playBillingView(host,{api:async()=>visibleCatalog,esc});assert.match(host.querySelector('[data-play-status]').textContent,/Diagnostic: OperationError: clientAppUnavailable/);assert.equal(host.querySelector('[data-buy]'),null);});
-test('website purchase opens checkout without an extra agreement checkbox',async t=>{const host=browser(t);const old=globalThis.sessionStorage;globalThis.sessionStorage=window.sessionStorage;t.after(()=>{if(old===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=old;});let requested;const api=async(path,options)=>{if(options){requested=JSON.parse(options.body);return {url:'https://checkout.stripe.com/c/pay/test'};}return {mode:'stripe-live',currency:'USD',balance:0,joe_balance:0,plans:[],packs:[{id:'analysis_12',name:'12 photo analyses',price_cents:1099,analyses:12,purchase_enabled:true}],checkout_enabled:true,subscriptions:[]};};await billingView(host,{api,esc});assert.equal(host.querySelector('#pack-consent'),null);assert.match(host.textContent,/By continuing to checkout/);await host.querySelector('[data-test-plan]').onclick();assert.equal(requested.plan,'analysis_12');assert.equal(requested.terms_version,'2026-11-09');});
+test('website purchase opens checkout without an extra agreement checkbox',async t=>{const host=browser(t);const old=globalThis.sessionStorage;globalThis.sessionStorage=window.sessionStorage;t.after(()=>{if(old===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=old;});let requested;const api=async(path,options)=>{if(options){requested=JSON.parse(options.body);return {url:'https://checkout.stripe.com/c/pay/test'};}return {mode:'stripe-live',currency:'USD',balance:0,joe_balance:0,plans:[],packs:[{id:'analysis_12',name:'12 photo analyses',price_cents:1099,analyses:12,purchase_enabled:true}],checkout_enabled:true,subscriptions:[]};};await billingView(host,{api,esc});assert.equal(host.querySelector('#pack-consent'),null);assert.equal(host.querySelector('a[href="/refunds.html"]'),null);await host.querySelector('[data-test-plan]').onclick();assert.equal(requested,undefined);assert.match(host.textContent,/By continuing to checkout/);assert.ok(host.querySelector('a[href="/refunds.html"]'));await host.querySelector('[data-continue]').onclick();assert.equal(requested.plan,'analysis_12');assert.equal(requested.terms_version,'2026-11-09');});
+
+
+test('Stripe thank-you waits for verified payment and removes the checkout reference',async t=>{
+ const host=browser(t);
+ window.history.replaceState(null,'','/?stripe_session=cs_live_example#purchase/thanks');
+ let confirmed=false;
+ const write=async(path,method,body)=>{
+  assert.equal(path,'/api/billing/confirm');
+  assert.equal(method,'POST');
+  assert.equal(body.session_id,'cs_live_example');
+  return {confirmed};
+ };
+ await confirmPurchase(host,{write,sessionId:'cs_live_example',verify:()=>true});
+ assert.match(host.textContent,/Payment is still pending/);
+ assert.equal(window.history.state,null);
+ confirmed=true;
+ await host.querySelector('button').onclick();
+ assert.match(host.textContent,/Thank you for your purchase/);
+ assert.equal(location.search,'');
+ assert.equal(window.history.state.purchaseConfirmed,true);
+});

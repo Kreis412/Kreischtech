@@ -103,7 +103,7 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
    const result=await external(async()=>{
     try{return await stripe.checkout.sessions.create({mode:plan.interval==='pack'?'payment':'subscription',client_reference_id:order.id,metadata,line_items:[{price:prices[key],quantity:1}],payment_method_types:['card'],expires_at:Math.floor(order.created/1000)+1860,
      ...(discounted(order)?{discounts:[{coupon:order.discount_coupon}]}:{}),
-     ...(plan.interval==='pack'?{}:{subscription_data:{metadata}}),success_url:origin+'/?stripe_session={CHECKOUT_SESSION_ID}#settings/billing',cancel_url:origin+'/#settings/billing'}, {idempotencyKey:'cs-'+mode+':'+order.id});}
+     ...(plan.interval==='pack'?{}:{subscription_data:{metadata}}),success_url:origin+'/?stripe_session={CHECKOUT_SESSION_ID}#purchase/thanks',cancel_url:origin+'/#settings/billing'}, {idempotencyKey:'cs-'+mode+':'+order.id});}
     catch(e){
      // Only retire a definitive validation rejection. Network/server/idempotency
      // errors may have created a session and must retain the original identity.
@@ -192,7 +192,14 @@ export function stripeBilling({dataDir,origin,secretKey='',webhookSecret='',enab
   }
   db.prepare('UPDATE orders SET fulfilled=1 WHERE id=?').run(stored.id);return {confirmed:true};
  }
- async function confirm(session,sessionId){owner(session);return serial(()=>fulfill(sessionId,session.company_id));}
+ async function confirm(session,sessionId){
+  owner(session);
+  return serial(async()=>{
+   const result=await fulfill(sessionId,session.company_id);
+   if(!result.confirmed||!live)return result;
+   return {...result,analytics_eligible:true};
+  });
+ }
  async function sync(session){
   owner(session);return serial(async()=>{const orders=db.prepare('SELECT session FROM orders WHERE company=? AND session IS NOT NULL AND fulfilled>=0 ORDER BY created DESC LIMIT 10').all(session.company_id);
   for(const order of orders)await fulfill(order.session,session.company_id);
