@@ -1,16 +1,34 @@
 import './Hub.css';
 
 const appUrl = 'https://contractorsight-pilot.onrender.com/';
+const consultingEmail = 'mailto:kreischtech@gmail.com?subject=KreischTech%20consulting%20inquiry';
 const testUrl = 'https://play.google.com/apps/testing/com.kreischtech.contractorsight';
 
 export default function App() {
   return <div className="hub">
     <a className="skip-link" href="#main">Skip to content</a>
-    <header className="hub-nav"><a className="brand" href="/" aria-label="KreischTech home"><img src="/contractorsight-logo.png" alt="" /><span>KreischTech<small>Software for the work ahead.</small></span></a><a className="nav-open" href={appUrl}>Open web app <span aria-hidden="true">↗</span></a></header>
+    <header className="hub-nav"><a className="brand" href="/" aria-label="KreischTech home"><img src="/contractorsight-logo.png" alt="" /><span>KreischTech<small>AI consulting and software</small></span></a><a className="nav-open" href={appUrl}>Open web app <span aria-hidden="true">↗</span></a></header>
     <main id="main">
-      <section className="hub-hero">
-        <div><p className="eyebrow">CONTRACTORSIGHT BY KREISCHTECH</p><h1>A clearer picture.<br /><span>A better job plan.</span></h1><p className="intro">Turn jobsite photos into useful observations, cost estimates, and next steps. Keep your projects moving—from the first walkthrough to the work ahead.</p><div className="hub-actions"><a className="hub-button primary" href={appUrl}>Open ContractorSight <span aria-hidden="true">↗</span></a><a className="hub-button secondary" href="#android">Get it on Android <span aria-hidden="true">↓</span></a></div><p className="fine">Use the web app on your phone, tablet, or computer.</p><a className="product-hunt-badge" href="https://www.producthunt.com/products/contractorsight-by-kreischtech?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-contractorsight-by-kreischtech" target="_blank" rel="noopener noreferrer"><img alt="ContractorSight by KreischTech - Turn jobsite photos into clearer plans and estimates | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1276538&amp;theme=light&amp;t=1792010592836" /></a></div>
-        <div className="hero-art"><img src="/contractorsight-feature.png" alt="ContractorSight: turn jobsite photos into clearer plans" /><div className="art-caption"><span className="status-dot" /> Built around your jobsite. Guided by your judgment.</div></div>
+      <section className="consulting-hero" aria-labelledby="consulting-title">
+        <p className="eyebrow">KREISCHTECH AI CONSULTING</p>
+        <h1 id="consulting-title">AI consulting and business planning for small businesses</h1>
+        <p className="intro">We help owners build business plans, bring AI into the tools they already use, and automate repetitive work. Start with a new business idea or a process that takes too much of your team's time.</p>
+        <div className="hub-actions">
+          <a className="hub-button primary" href={consultingEmail}>Talk about your project</a>
+          <a className="hub-button secondary" href="#contractorsight">Explore ContractorSight</a>
+        </div>
+      </section>
+      <section className="hub-features" aria-labelledby="services-title">
+        <h2 id="services-title">Consulting services</h2>
+        <div className="feature-grid">
+          <article><h3>Business planning</h3><p>Turn your idea into a written plan with target customers, startup costs, revenue assumptions, and milestones.</p></article>
+          <article><h3>AI integration</h3><p>Choose AI tools for your business and set them up for tasks such as drafting internal documents, organizing project notes, and answering common questions.</p></article>
+          <article><h3>Automation and training</h3><p>Streamline repeat work like intake, follow-ups, and reporting. Give your team practical training and a process for reviewing AI output.</p></article>
+        </div>
+      </section>
+      <section className="hub-hero product-hero" id="contractorsight" aria-labelledby="product-title">
+        <div><p className="eyebrow">CONTRACTORSIGHT BY KREISCHTECH</p><h2 id="product-title">Turn jobsite photos into project plans</h2><p className="intro">Turn jobsite photos into useful observations, cost estimates, and next steps. Keep your projects moving—from the first walkthrough to the work ahead.</p><div className="hub-actions"><a className="hub-button primary" href={appUrl}>Open ContractorSight <span aria-hidden="true">↗</span></a><a className="hub-button secondary" href="#android">Get it on Android <span aria-hidden="true">↓</span></a></div><p className="fine">Use the web app on your phone, tablet, or computer.</p><a className="product-hunt-badge" href="https://www.producthunt.com/products/contractorsight-by-kreischtech?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-contractorsight-by-kreischtech" target="_blank" rel="noopener noreferrer"><img alt="ContractorSight by KreischTech - Turn jobsite photos into clearer plans and estimates | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1276538&amp;theme=light&amp;t=1792010592836" /></a></div>
+        <div className="hero-art"><img src="/contractorsight-feature.png" alt="ContractorSight: turn jobsite photos into clearer plans" /></div>
       </section>
       <section className="hub-features" aria-labelledby="features-title"><p className="eyebrow">FROM PHOTO TO PLAN</p><h2 id="features-title">Less paperwork. More forward progress.</h2><div className="feature-grid">
         <article><span className="feature-number">01 / OBSERVE</span><h3>Start with a photo</h3><p>Analyze visible jobsite conditions, flag potential concerns, and add your own measurements and notes.</p></article>
