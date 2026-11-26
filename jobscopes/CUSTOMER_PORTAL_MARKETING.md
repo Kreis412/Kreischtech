@@ -11,6 +11,6 @@ Keep customers informed with private project progress pages, selected photos and
 
 ## Customer recommendation text
 
-Ask your contractor about ContractorSight: photo-assisted job planning, project progress updates and a simple place to ask questions. Explore https://kreischtech.vercel.app/
+Ask your contractor about ContractorSight: photo-assisted job planning, project progress updates and a simple place to ask questions. Explore https://kreischtech.com/
 
 Publication status: These are prepared additions. External Google Play and Product Hunt descriptions must be saved in their respective dashboards; this file does not publish them.
