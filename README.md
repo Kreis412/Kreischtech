@@ -27,7 +27,7 @@ We use JSON-LD structured data on the Landing Page to provide search engines wit
 - **Type**: `ProfessionalService`
 - **Focus**: AI Consulting for Construction
 - **Location**: Ashtabula, Ohio
-- **URL**: https://kreischtech.vercel.app/
+- **URL**: https://kreischtech.com/
 
 ### 5. Social Media Presence
 Open Graph and Twitter tags are configured with high-quality preview images (Unsplash) to ensure professional visibility when links are shared.

@@ -19,7 +19,7 @@ function LandingPage() {
     "name": "Kreischtech AI Consulting",
     "image": "https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&q=80&w=1200",
     "description": "Secure, local AI consulting for Construction and Engineering firms.",
-    "url": "https://kreischtech.vercel.app/",
+    "url": "https://kreischtech.com/",
     "serviceType": "AI Consulting",
     "areaServed": "Global",
     "offers": {
